@@ -469,7 +469,7 @@ paths:
         **Response**: Returns `201 Created` if this is the first configuration for the wallet, or `200 OK` if updating an existing configuration. The response includes the deployed rebalancer contract address and the list of configured tokens.
       operationId: updateConfig
       tags:
-        - Configuration
+        - Config
       security:
         - ApiKeyAuth: []
           JwtAuth: []
@@ -575,7 +575,7 @@ paths:
         **Note:** Requires a valid API key to query configurations.
       operationId: getConfig
       tags:
-        - Configuration
+        - Config
       parameters:
         - name: walletAddress
           in: path
@@ -682,7 +682,7 @@ paths:
         This represents the default state of the configuration, which can be used as a reference or starting point for rebalancing operations. Use this to compare against user's existing configuration.
       operationId: getDefaultConfig
       tags:
-        - Configuration
+        - Config
       parameters:
         - name: token
           in: path
@@ -962,7 +962,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CompleteChallengeWithSignatureBodyV2"
+              $ref: "#/components/schemas/VerifyChallengeRequest"
             example:
               walletAddress: "0x1234567890123456789012345678901234567890"
               signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
@@ -1056,6 +1056,7 @@ components:
           pattern: "^0x[a-fA-F0-9]{40}$"
           description: User's Ethereum wallet address (must be checksummed per EIP-55)
           example: "0x14848abF0125De79e0A5F3caA7F4EA9664a988e8"
+    
     GetChallengeResponse:
       type: object
       required:
@@ -1064,6 +1065,38 @@ components:
         message:
           type: string
           description: Challenge message to sign using personal_sign method
+
+    VerifyChallengeRequest:
+      type: object
+      required:
+        - walletAddress
+        - signature
+      properties:
+        walletAddress:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          description: User's Ethereum wallet address (must be checksummed per EIP-55)
+          example: "0x14848abF0125De79e0A5F3caA7F4EA9664a988e8"
+        signature:
+          type: string
+          description: Signed challenge message using personal_sign method
+          example: "0x9c1efc293e476948580195863a66203816a3d437a04a92df95c1be979010031c35dbd856110eb161aa59f72cbfe49ff3a64fda3bdb094c2c321edfb13c8215161b"
+        chain:
+          type: string
+          enum: [base]
+          nullable: true
+          default: "null"
+          description: When signing with a Smart Contract Wallet, specify the chain kind. Currently only Coinbase Smart Wallet is supported. This provides signature verification context
+          example: "base"
+
+    VerifyChallengeResponse:
+      type: object
+      required:
+        - jwt
+      properties:
+        jwt:
+          type: string
+          description: Issued JWT for authenticated requests
 
     DepositRequest:
       type: object
@@ -2219,36 +2252,6 @@ components:
         stepsTotal:
           type: integer
 
-    CompleteChallengeWithSignatureBodyV2:
-      type: object
-      required:
-        - walletAddress
-        - signature
-      properties:
-        walletAddress:
-          type: string
-          description: Wallet address
-        signature:
-          type: string
-          description: Signed challenge message
-        extraAddress:
-          type: string
-          nullable: true
-          description: Optional extra address
-        chainKind:
-          type: string
-          nullable: true
-          description: Chain kind identifier
-
-    VerifyChallengeResponse:
-      type: object
-      required:
-        - jwt
-      properties:
-        jwt:
-          type: string
-          description: Issued JWT for authenticated requests
-
     ApiError:
       type: object
       required:
@@ -2713,7 +2716,7 @@ components:
 tags:
   - name: Auth
     description: Get challenge / verify challenge authentication
-  - name: Configuration
+  - name: Config
     description: Rebalancer configuration management
   - name: Deposits
     description: Deposit operations for rebalancing
