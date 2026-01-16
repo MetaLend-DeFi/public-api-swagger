@@ -2710,19 +2710,19 @@ components:
                 retryAfterSeconds: null
 
 tags:
+  - name: Auth
+    description: Get challenge / verify challenge authentication
+  - name: Configuration
+    description: Rebalancer configuration management
   - name: Deposits
     description: Deposit operations for rebalancing
   - name: Withdrawals
-    description: Withdrawal operations from protocols
-  - name: Configuration
-    description: Rebalancer configuration management
-  - name: Pools
-    description: Protocol and pool information
+    description: Withdrawal operations from pools
   - name: Balances
-    description: Balance queries across protocols
+    description: Balance queries across pools and protocols
   - name: Rewards
     description: Reward aggregation and claim data
+  - name: Pools
+    description: Protocol and pool information
   - name: Transaction Costs
     description: Transaction cost queries
-  - name: Auth
-    description: Challenge/verify authentication
