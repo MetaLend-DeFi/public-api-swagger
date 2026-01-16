@@ -3,31 +3,35 @@ info:
   title: MetaLend Rebalancing API
   version: 0.1.0
   description: >-
-    API for managing cross-protocol DeFi rebalancing operations on Linea exposing:
+    API for managing cross-protocol cross-chain DeFi rebalancing operations exposing:
     <ul>
+      <li><b>Auth</b> – challenge/verify flow for JWT issuance.</li>
+      <li><b>Configurations</b> – register or update token-level user-rebalancer settings and fetch current wallet configs.</li>
       <li><b>Deposits</b> – create deposit intents, receive tracking IDs, and poll for completion.</li>
       <li><b>Withdrawals</b> – submit signed withdrawal requests and monitor status updates.</li>
-      <li><b>Configurations</b> – register or update token-level user-rebalancer settings and fetch current wallet configs.</li>
-      <li><b>Balances</b> – query wallet-level balances and withdraw details.</li>
-      <li><b>Pools</b> – list supported protocols (Aave, Morpho, Euler, etc.), their pools, APY breakdowns, and TVL snapshots.</li>
-      <li><b>Transaction Costs</b> – current deposit/withdraw gas fees and minimum amounts by chain.</li>
+      <li><b>Balances</b> – query wallet-level balances and withdraw details, as well as balances in bridge progress.</li>
       <li><b>Rewards</b> – aggregated rewards and claim details per wallet.</li>
-      <li><b>Auth</b> – challenge/verify flow for JWT issuance.</li>
+      <li><b>Pools</b> – list supported protocols (Aave, Morpho, Euler, etc.), their pools, APY breakdowns, and TVL snapshots.</li>
+      <li><b>Transaction Costs</b> – current deposit/withdraw on-behalf transaction fees and minimum amounts by chain.</li>
     </ul>
-    Endpoints are protected by JWT-authenticated principals where specified.
-  # contact:
-  #   name: MetaLend API Support
-  #   email: support@metalend.tech
+    All endpoints require an <b>X-API-Key</b>. <b>JWT authentication</b> is required on <b>deposit, withdrawal, and config update</b> operations.
+    
+    Request API key here: <a href="https://docs.google.com/forms/d/1dtVRld9UU_tFr0Okg9i-I9U0IuBMF1wzTc_LUUn2EA0" target="_blank" rel="noopener noreferrer">here</a>
+  contact:
+    name: MetaLend API Support
+    email: support@metalend.tech
+  termsOfService: https://metalend-inc.gitbook.io/litepaper/terms-of-service
 
 externalDocs:
   description: Litepaper
   url: https://metalend-inc.gitbook.io/litepaper
 
 servers:
-  - url: https://linea-api.metalend.tech
+  - url: https://api.metalend.tech
     description: Production server
 
 security:
+  # - BearerAuth: []
   - ApiKeyAuth: []
 
 paths:
