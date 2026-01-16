@@ -919,7 +919,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PrimaryUserByWalletAddressChallengeBody"
+              $ref: "#/components/schemas/GetChallengeRequest"
             example:
               address: "0x1234567890123456789012345678901234567890"
       responses:
@@ -1046,6 +1046,25 @@ components:
       description: Internal MetaLend JWT issued by `/v1/auth/challenge/verify`. Required for deposit, withdrawal, and config update endpoints.
 
   schemas:
+    GetChallengeRequest:
+      type: object
+      required:
+        - walletAddress
+      properties:
+        walletAddress:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          description: User's Ethereum wallet address (must be checksummed per EIP-55)
+          example: "0x14848abF0125De79e0A5F3caA7F4EA9664a988e8"
+    GetChallengeResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Challenge message to sign using personal_sign method
+
     DepositRequest:
       type: object
       required:
@@ -2200,15 +2219,6 @@ components:
         stepsTotal:
           type: integer
 
-    PrimaryUserByWalletAddressChallengeBody:
-      type: object
-      required:
-        - address
-      properties:
-        address:
-          type: string
-          description: Wallet address
-
     CompleteChallengeWithSignatureBodyV2:
       type: object
       required:
@@ -2229,15 +2239,6 @@ components:
           type: string
           nullable: true
           description: Chain kind identifier
-
-    GetChallengeResponse:
-      type: object
-      required:
-        - message
-      properties:
-        message:
-          type: string
-          description: Challenge message to sign
 
     VerifyChallengeResponse:
       type: object
