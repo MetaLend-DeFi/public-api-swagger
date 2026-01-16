@@ -1,1 +1,2724 @@
-#
+openapi: 3.0.3
+info:
+  title: MetaLend Rebalancing API
+  version: 0.1.0
+  description: >-
+    API for managing cross-protocol DeFi rebalancing operations on Linea exposing:
+    <ul>
+      <li><b>Deposits</b> – create deposit intents, receive tracking IDs, and poll for completion.</li>
+      <li><b>Withdrawals</b> – submit signed withdrawal requests and monitor status updates.</li>
+      <li><b>Configurations</b> – register or update token-level user-rebalancer settings and fetch current wallet configs.</li>
+      <li><b>Balances</b> – query wallet-level balances and withdraw details.</li>
+      <li><b>Pools</b> – list supported protocols (Aave, Morpho, Euler, etc.), their pools, APY breakdowns, and TVL snapshots.</li>
+      <li><b>Transaction Costs</b> – current deposit/withdraw gas fees and minimum amounts by chain.</li>
+      <li><b>Rewards</b> – aggregated rewards and claim details per wallet.</li>
+      <li><b>Auth</b> – challenge/verify flow for JWT issuance.</li>
+    </ul>
+    Endpoints are protected by JWT-authenticated principals where specified.
+  # contact:
+  #   name: MetaLend API Support
+  #   email: support@metalend.tech
+
+externalDocs:
+  description: Litepaper
+  url: https://metalend-inc.gitbook.io/litepaper
+
+servers:
+  - url: https://linea-api.metalend.tech
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /v1/deposits:
+    post:
+      summary: Create a deposit
+      description: |
+        Initiates a deposit transaction to move funds into an optimal DeFi protocol on Linea.<br><br>
+        User owned **rebalancer contract** must be pre-approved to spend tokens. The address of this contract is returned by the `GET /v1/config/{walletAddress}` endpoint. This contract gets deployed during first deposit and its address is pre-computed using CREATE2.<br><br>
+        Both **signature-based (gasless)** and **approval-based** approvals are supported.<br><br>
+        Actual deposit transaction is executed by an operator on behalf of the user after validating the request and JWT token.
+
+        ## Required Fields (All Deposits)
+
+        These fields are **always required** regardless of deposit method:
+        - `token`: The symbol of the deposit token (e.g., "USDC", "USDT", "MUSD")
+        - `walletAddress`: The user address making the deposit (must match JWT token). Currently only EOAs are supported (no smart contract wallets).
+        - `amount`: The amount to deposit in token's raw unit (e.g., for USDC with 6 decimals, "1000000" = 1 USDC). Token details can be found in the `GET /v1/pools` endpoint. Minimum deposit amount is 0.1 of the token to cover gas fees for on behalf transaction.
+
+        ## Deposit Methods
+
+        ### Signature-Based Deposits (EIP-3009)
+        Supported for **USDC** and **MUSD** tokens. This method enables gasless approval where 
+        the user signs an authorization permit off-chain, and MetaLend executes the transfer on-chain.
+
+        **Additional required fields:**
+        - `signature`: The user's signature authorizing the transfer
+        - `validAfter`: Unix timestamp indicating when the signature becomes valid
+        - `validBefore`: Unix timestamp indicating when the signature expires. This must be greater than `validAfter` and within a short time window (max 1 minute in future).
+        - `nonce`: A unique 32-byte hex string to prevent replay attacks
+        - `tokenName`: The official name of the token (e.g., "USD Coin"), can be read on token contract (ERC20 standard).
+        - `tokenVersion`: The token contract version, can be read on token contract (ERC20 standard).
+
+        Sign `ReceiveWithAuthorization` EIP-712 typed data structure as defined by the token contract.
+
+        ### Approval-Based Deposits
+        Supported for **USDT, USDC, MUSD**. This method requires the user 
+        to approve the rebalancer contract before initiating the deposit by sending a transaction.
+
+        **Additional requirements:**
+        - Standard ERC-20 approval via the token contract before calling this endpoint
+        - Only the base required fields (chain, token, walletAddress, amount) are allowed in the request
+        - Do NOT include signature, timestamp, or nonce fields for approval-based deposits
+
+        ## Authentication & Security
+
+        - Requires JWT authentication via Bearer token in the Authorization header
+        - The JWT must contain the same wallet address as specified in the request body
+
+        ## Processing Flow
+
+        1. JWT verification to ensure the caller owns the specified wallet
+        2. Request validation (chain, token, amount, address, signature/approval requirements)
+        3. Deposit request is queued for processing with a unique tracking ID
+        4. Request is cached with a 5-minute TTL
+        5. Returns immediately tracking ID and "PROCESSING" status.
+        6. Use `GET /v1/deposits/{trackingId}`` to monitor the deposit progress
+
+        ## Response
+
+        Returns a **tracking ID** that can be used to poll the deposit status. The tracking ID is:
+        - The signature value (for signature-based deposits)
+        - A randomly generated UUID (for approval-based deposits)
+
+        The tracking ID is valid for 5 minutes and can be used with the status endpoint 
+        to check if the deposit was successful, failed, or is still processing.
+
+        ## Notes
+        - Smart contract wallets that do not comply with standard signature length are currently not supported
+        - For signature-based deposits, ensure timestamps are within valid range
+      operationId: createDeposit
+      tags:
+        - Deposits
+      security:
+        - ApiKeyAuth: []
+          JwtAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositRequest"
+            examples:
+              signatureBased:
+                summary: Signature-based deposit (USDC/MUSD)
+                value:
+                  chain: "LINEA"
+                  token: "USDC"
+                  walletAddress: "0x1234567890123456789012345678901234567890"
+                  amount: "1000000"
+                  validAfter: "1700000000"
+                  validBefore: "1700000100"
+                  nonce: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                  signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+                  tokenName: "USD Coin"
+                  tokenVersion: "2"
+              approvalBased:
+                summary: Approval-based deposit (USDT, USDC, MUSD)
+                value:
+                  chain: "LINEA"
+                  token: "USDT"
+                  walletAddress: "0x1234567890123456789012345678901234567890"
+                  amount: "1000000"
+      responses:
+        "201":
+          description: Deposit initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepositResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                walletAddressBlank:
+                  $ref: "#/components/examples/WalletAddressBlank"
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+                signatureNotAllowed:
+                  $ref: "#/components/examples/SignatureNotAllowed"
+                invalidSignatureFormat:
+                  $ref: "#/components/examples/InvalidSignatureFormat"
+                nonceRequired:
+                  $ref: "#/components/examples/NonceRequired"
+                timestampRequired:
+                  $ref: "#/components/examples/TimestampsRequired"
+                tokenNameAndVersionRequired:
+                  $ref: "#/components/examples/TokenNameVersionRequired"
+                nonceNotAllowed:
+                  $ref: "#/components/examples/NonceNotAllowed"
+                timestampNotAllowed:
+                  $ref: "#/components/examples/TimestampsNotAllowed"
+                tokenNameAndVersionNotAllowed:
+                  $ref: "#/components/examples/TokenNameVersionNotAllowed"
+                tokenNotSupported:
+                  $ref: "#/components/examples/TokenNotSupported"
+                chainBlank:
+                  $ref: "#/components/examples/ChainBlank"
+                chainNotSupported:
+                  $ref: "#/components/examples/ChainNotSupported"
+                invalidAmountGreaterThanZero:
+                  $ref: "#/components/examples/InvalidAmountGreaterThanZero"
+                invalidAmountMinimumGas:
+                  $ref: "#/components/examples/InvalidAmountMinimumGas"
+                invalidAmountFormat:
+                  $ref: "#/components/examples/InvalidAmountFormat"
+                invalidTimestampBeforeGreaterThanAfter:
+                  $ref: "#/components/examples/InvalidTimestampBeforeGreaterThanAfter"
+                invalidTimestampAfterMustBeInPastOrNow:
+                  $ref: "#/components/examples/InvalidTimestampAfterMustBeInPastOrNow"
+                invalidTimestampBeforeMustBeInFuture:
+                  $ref: "#/components/examples/InvalidTimestampBeforeMustBeInFuture"
+                invalidTimestampBeforeMustBeAtMostOneMinuteInFuture:
+                  $ref: "#/components/examples/InvalidTimestampBeforeMustBeAtMostOneMinuteInFuture"
+                insufficientApproval:
+                  $ref: "#/components/examples/InsufficientApproval"
+                unauthorizedInvalidSignature:
+                  $ref: "#/components/examples/UnauthorizedInvalidSignature"
+
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /v1/deposits/{trackingId}:
+    get:
+      summary: Get deposit status
+      description: |
+        Retrieves the current status and details of a deposit transaction using its unique tracking ID.
+
+        This endpoint allows you to monitor the progress of a deposit from initiation to completion. 
+        The tracking ID is returned when you create a deposit and can be either a signature hash or UUID format.
+
+        Please be aware that if you see failed state, it can be also due to high gas fees, max allowed is 1 USD in gas fees, otherwise it will fail.
+
+        **Status Values:**
+        - `PROCESSING`: Deposit is being processed on the blockchain
+        - `SUCCESS`: Deposit has been successfully completed and funds are in the protocol
+        - `FAILED`: Deposit transaction failed (e.g., insufficient gas, transaction reverted)
+
+        **Response Details:**
+        When successful, the response includes:
+        - Current deposit status
+        - Target protocol name (e.g., "Aave", "Compound") where funds were deposited
+        - Pool/vault contract address receiving the funds
+        - Blockchain network where the deposit occurred
+
+        **Use Cases:**
+        - Poll this endpoint to track deposit progress after creation
+        - Verify successful completion before proceeding with other operations
+        - Display real-time status updates to users in your application
+
+        **Note:** Tracking IDs expire after 5 minutes. If you receive a error code, 
+        the tracking ID either doesn't exist or has been purged from the system.
+      operationId: getDepositStatus
+      tags:
+        - Deposits
+      parameters:
+        - name: trackingId
+          in: path
+          required: true
+          description: Tracking ID (signature or UUID) returned from deposit creation
+          schema:
+            type: string
+          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+      responses:
+        "200":
+          description: Deposit status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepositStatusResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                missingTrackingId:
+                  $ref: "#/components/examples/MissingTrackingId" # probably can't happen (I get 405 or proceed and stopped by invalid id)
+                invalidTrackingId:
+                  $ref: "#/components/examples/InvalidTrackingId"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "404":
+          description: Tracking ID not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                trackingIdNotFound:
+                  $ref: "#/components/examples/TrackingIdNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/withdrawals:
+    post:
+      summary: Create a withdrawal
+      description: Initiates a withdrawal transaction from DeFi protocols. <br><br>
+        Withdrawal must be signed as per **EIP-712 Typed structured data hashing and signing**. The signature must be created by wallet.<br><br>
+        Signature relevant information is retrieved by `/v1/balances/{walletAddress}` endpoint in the `withdrawRequest` field. EIP 712 domain parameters and types are provided for convenience. The `value` field contains the `token` (address) and `poolContract` (address) that must match the withdrawal request, while `amount` and `deadline` must be supplied by the user.<br><br>
+        `Deadline` must be a unix timestamp no more than 1 minute in the future which is the maximum amount of time the server waits for transaction confirmation.<br><br>
+        `Amount` must be at least 0.1 (stablecoin) of the token to cover on-behalf transaction gas fees and no more than the available balance in the specified pool. This value is specified in raw units (e.g., 6 decimals for USDC). Token decimals are included in the `token` object of `/v1/balances/{walletAddress}` endpoint for reference.<br><br>
+        `Signature` must be of length 132 (0x + 130 characters) and signed by the wallet address associated with the **JWT token**.
+      operationId: createWithdrawal
+      tags:
+        - Withdrawals
+      security:
+        - ApiKeyAuth: []
+          JwtAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WithdrawalRequest"
+            example:
+              chain: "LINEA"
+              token: "USDC"
+              walletAddress: "0x1234567890123456789012345678901234567890"
+              amount: "500000"
+              deadline: "1700000000"
+              signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+              poolContract: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+      responses:
+        "201":
+          description: Withdrawal initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WithdrawalResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                walletAddressBlank:
+                  $ref: "#/components/examples/WalletAddressBlank"
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+
+                tokenNotSupported:
+                  $ref: "#/components/examples/TokenNotSupported"
+                chainBlank:
+                  $ref: "#/components/examples/ChainBlank"
+                chainNotSupported:
+                  $ref: "#/components/examples/ChainNotSupported"
+                invalidAmountGreaterThanZero:
+                  $ref: "#/components/examples/InvalidAmountGreaterThanZero"
+                invalidAmountMinimumGas:
+                  $ref: "#/components/examples/InvalidAmountMinimumGas"
+                invalidAmountFormat:
+                  $ref: "#/components/examples/InvalidAmountFormat"
+
+                deadlineNotUnix:
+                  $ref: "#/components/examples/DeadlineNotUnix"
+                deadlineMustBeInFuture:
+                  $ref: "#/components/examples/DeadlineMustBeInFuture"
+                deadlineTooFarInFuture:
+                  $ref: "#/components/examples/DeadlineMaxOneMinuteInFuture"
+
+                missingSignature:
+                  $ref: "#/components/examples/SignatureRequired"
+
+                protocolNotFound:
+                  $ref: "#/components/examples/ProtocolNotFound"
+                failedWithdrawSignatureValidation:
+                  $ref: "#/components/examples/FailedWithdrawSignatureValidation"
+
+                unauthorizedInvalidSignature:
+                  $ref: "#/components/examples/UnauthorizedInvalidSignature"
+
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/withdrawals/{trackingId}:
+    get:
+      summary: Get withdrawal status
+      description: |
+        Retrieves the current status and details of a withdrawal transaction using its unique tracking ID.
+
+        This endpoint allows you to monitor the progress of a withdrawal from initiation to completion. 
+        The tracking ID is returned when you create a withdrawal and is in signature hash format.
+
+        **Status Values:**
+        - `PROCESSING`: Withdrawal is being processed on the blockchain
+        - `SUCCESS`: Withdrawal has been successfully completed and funds have been transferred
+        - `FAILED`: Withdrawal transaction failed (e.g., insufficient gas, transaction reverted)
+
+        **Response Details:**
+        When successful, the response includes:
+        - Current withdrawal status
+        - Transaction hash (when available) for blockchain verification
+        - Timestamp of the withdrawal request
+
+        **Note:** Tracking IDs expire after 1 minutes. If you receive a error status, 
+        the tracking ID either doesn't exist or has been purged from the system but it will still proceed on blockchain.
+      tags:
+        - Withdrawals
+      parameters:
+        - name: trackingId
+          in: path
+          required: true
+          description: Tracking ID (signature) returned from withdrawal creation
+          schema:
+            type: string
+          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+      responses:
+        "200":
+          description: Withdrawal status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WithdrawalStatusResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                missingTrackingId:
+                  $ref: "#/components/examples/MissingTrackingId" # probably can't happen (I get 405 or proceed and stopped by invalid id)
+                invalidTrackingId:
+                  $ref: "#/components/examples/InvalidTrackingId"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "404":
+          description: Tracking ID not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                trackingIdNotFound:
+                  $ref: "#/components/examples/TrackingIdNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/config:
+    put:
+      summary: Update rebalancer configuration
+      description: |
+        Creates or updates the rebalancing configuration for a specific wallet address and token. This endpoint allows users to set custom protocols and pools for automated rebalancing of their funds.
+
+        **Authentication**: Requires a valid JWT token. The wallet address in the JWT must match the `walletAddress` field in the request body.
+
+        **Configuration per Token**: Each request configures one specific token (USDC, MUSD, or USDT). To configure multiple tokens, make separate PUT requests for each token. After successfully setting a configuration for a token, the `hasSignedConfig` flag for that token will become `true` when retrieved via GET `/v1/config/{walletAddress}`.
+
+        **Configuration Structure**: The configuration specifies arrays of domain IDs, protocol IDs, and pool contract addresses. All three arrays must have the same length, with each index representing one pool configuration:
+        - `domainIds[0]`, `protocolIds[0]`, `poolAddresses[0]` = first pool
+        - `domainIds[1]`, `protocolIds[1]`, `poolAddresses[1]` = second pool
+        - And so on...
+
+        **Domain IDs**: Currently only `11` is supported, representing the LINEA network. All domain IDs in the array must be `11`.
+
+        **Protocol IDs**: Maps to supported protocols:
+        - `0` = Aave
+        - `1` = Morpho
+        - `2` = Euler
+
+        **Pool Contracts**: Each pool contract address must be a valid checksummed Ethereum address (EIP-55) corresponding to a pool on the specified protocol. Pool addresses can be obtained from the `/v1/pools` endpoint.
+
+        **Signature Requirement**: The `signature` field must contain an EIP-712 signature created by wallet. The signature must be of length 132 (0x + 130 characters) and must be signed by the wallet address specified in the `walletAddress` field.
+
+        **Include Rewards APY**: The optional `includeRewardsApy` boolean flag (default: `true`) determines whether reward  APYs should be included in APY calculations during rebalancing decisions.
+
+        **Response**: Returns `201 Created` if this is the first configuration for the wallet, or `200 OK` if updating an existing configuration. The response includes the deployed rebalancer contract address and the list of configured tokens.
+      operationId: updateConfig
+      tags:
+        - Configuration
+      security:
+        - ApiKeyAuth: []
+          JwtAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrUpdateConfigRequest"
+            example:
+              walletAddress: "0x1234567890123456789012345678901234567890"
+              token: "USDC"
+              domainIds: [11, 11, 11]
+              protocolIds: [0, 1, 2]
+              poolAddresses:
+                - "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+                - "0x1111111111111111111111111111111111111111"
+                - "0x2222222222222222222222222222222222222222"
+              signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+              includeRewardsApy: true
+      responses:
+        "200":
+          description: Configuration updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrUpdateConfigResponse"
+              example:
+                walletAddress: "0x1234567890123456789012345678901234567890"
+                rebalancerAddress: "0x1234567890123456789012345678901234567890"
+                configuredToken: "USDC"
+                operation: "UPDATED"
+        "201":
+          description: Configuration created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrUpdateConfigResponse"
+              example:
+                walletAddress: "0x1234567890123456789012345678901234567890"
+                rebalancerAddress: "0x1234567890123456789012345678901234567890"
+                configuredToken: "USDC"
+                operation: "CREATED"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                walletAddressBlank:
+                  $ref: "#/components/examples/WalletAddressBlank"
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+                tokenNotSupported:
+                  $ref: "#/components/examples/TokenNotSupported"
+                configArrayMissmtchCount:
+                  $ref: "#/components/examples/ConfigArraysMismatchCount"
+                chainNotSupported:
+                  $ref: "#/components/examples/ChainNotSupported"
+                protocolIdNotSupported:
+                  $ref: "#/components/examples/ProtocolIdNotSupported"
+                invalidPoolIdentifier:
+                  $ref: "#/components/examples/InvalidPoolIdentifier"
+                signatureRequired:
+                  $ref: "#/components/examples/SignatureRequired"
+                configValidationFailed:
+                  $ref: "#/components/examples/ConfigValidationFailed"
+                unauthorizedInvalidSignature:
+                  $ref: "#/components/examples/UnauthorizedInvalidSignature"
+
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/config/{walletAddress}:
+    get:
+      summary: Get rebalancer configuration
+      description: |
+        Retrieves the current rebalancing configuration state for a specific wallet address across all supported tokens.
+
+        This endpoint returns configurations for each supported token, including:
+        - **Rebalancer Address**: The smart contract address of the user's rebalancer
+        - **Rebalancing Manager Address**: The address of the rebalancing manager contract
+        - **Configurations**: List of configuration items, one per supported token, each containing:
+          - Token information
+          - Domain IDs, Protocol IDs, and Pool contracts
+          - **hasSignedConfig**: Boolean flag indicating the configuration state for this specific token
+
+        **Understanding hasSignedConfig (per token):**
+        - `true`: The user has signed and set their own custom configuration for this token
+        - `false`: The user has not signed any configuration for this token yet, and the returned values represent the default configuration
+
+        When `hasSignedConfig` is false for a token, the configuration data shows what the default state allows, but it hasn't been actively set by the user for that token. This state must be signed by user to confirm the configuration. Each token can have a different `hasSignedConfig` status.
+
+        **Note:** Requires a valid API key to query configurations.
+      operationId: getConfig
+      tags:
+        - Configuration
+      parameters:
+        - name: walletAddress
+          in: path
+          required: true
+          description: Ethereum wallet address
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{40}$"
+          example: "0x1234567890123456789012345678901234567890"
+      responses:
+        "200":
+          description: Configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetConfigResponse"
+              example:
+                walletAddress: "0x1234567890123456789012345678901234567890"
+                rebalancerAddress: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+                rebalancingManagerAddress: "0x971ad06e6fde83b0265bd3ced5f5eaf30e269962"
+                configurations:
+                  - token: "USDC"
+                    domainIds: [11]
+                    protocolIds: [0]
+                    poolAddresses: ["0xc47b8c00b0f69a36fa203ffeac0334874574a8ac"]
+                    includeRewardsApy: true
+                    lastRebalanceTimestamp: "2025-01-15T10:30:00Z"
+                    rebalanceFrequency: 7
+                    totalGasFee: "0.00"
+                    totalDeposits: "0.00"
+                    totalWithdrawals: "0.00"
+                    requiredTvl: "0"
+                    requiredLiquidityMultiplier: "0"
+                    spendingCapRaw: null
+                    spendingCapFormatted: null
+                    hasSignedConfig: true
+                  - token: "MUSD"
+                    domainIds: [11]
+                    protocolIds: [2]
+                    poolAddresses: ["0xa7ada0d422a8b5fa4a7947f2cb0ee2d32435647d"]
+                    includeRewardsApy: true
+                    lastRebalanceTimestamp: null
+                    rebalanceFrequency: 7
+                    totalGasFee: "0.00"
+                    totalDeposits: "0.00"
+                    totalWithdrawals: "0.00"
+                    requiredTvl: "0"
+                    requiredLiquidityMultiplier: "0"
+                    spendingCapRaw: null
+                    spendingCapFormatted: null
+                    hasSignedConfig: false
+                  - token: "USDT"
+                    domainIds: [11, 11]
+                    protocolIds: [0, 2]
+                    poolAddresses:
+                      ["0xc47b8c00b0f69a36fa203ffeac0334874574a8ac", "0xcbef9be95738290188b25ca9a6dd2bec417a578c"]
+                    includeRewardsApy: true
+                    lastRebalanceTimestamp: null
+                    rebalanceFrequency: 7
+                    totalGasFee: "0.00"
+                    totalDeposits: "0.00"
+                    totalWithdrawals: "0.00"
+                    requiredTvl: "0"
+                    requiredLiquidityMultiplier: "0"
+                    spendingCapRaw: null
+                    spendingCapFormatted: null
+                    hasSignedConfig: false
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                walletAddressBlank:
+                  $ref: "#/components/examples/WalletAddressBlank"
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+                unauthorizedInvalidSignature:
+                  $ref: "#/components/examples/UnauthorizedInvalidSignature"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/config/default/{token}:
+    get:
+      summary: Get default configuration for token
+      description: |
+        Retrieves the default pool configuration state for a specific token including domain IDs, protocol IDs, and pool contract addresses.
+
+        This endpoint returns the initial default configuration that shows how the system is set up for the specified token. The configuration includes:
+        - **Domain IDs**: Cross-chain domain identifiers for the token
+        - **Protocol IDs**: Identifiers of the supported DeFi protocols (e.g., Aave, Compound)
+        - **Pool Contracts**: Smart contract addresses for the respective pools
+        - **Rebalancing Manager Address**: The address of the rebalancing manager contract
+
+        This represents the default state of the configuration, which can be used as a reference or starting point for rebalancing operations. Use this to compare against user's existing configuration.
+      operationId: getDefaultConfig
+      tags:
+        - Configuration
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Token symbol (uppercase)
+          schema:
+            type: string
+            enum: [USDC, MUSD, USDT]
+          example: "USDC"
+      responses:
+        "200":
+          description: Default configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetDefaultConfigResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                tokenNotSupported:
+                  $ref: "#/components/examples/TokenNotSupported"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/pools:
+    get:
+      summary: Get pools information
+      description: |
+        Retrieves comprehensive information about supported DeFi protocols, pools, Total Value Locked (TVL), and Annual Percentage Yield (APY) data on supported networks.<br><br>
+
+        The response is a flat list of pools across supported protocols (Aave, Morpho, Euler) and tokens (USDC, MUSD, USDT). Each pool includes protocol metadata, pool address/name, underlying token details, TVL, liquidity, APY breakdowns, signing metadata, and blacklist status.<br><br>
+
+        **APY Information**: The APY data includes native lending rates, reward provider APYs (e.g., MERKLE, BREVIS), and total combined APY. All APY values are formatted to 2 decimal places and represent 7-day average market rates adjusted by fees.<br><br>
+
+        This endpoint requires an API key and can be used to discover available investment opportunities before configuring a rebalancer or making deposits.
+      operationId: getPools
+      tags:
+        - Pools
+      responses:
+        "200":
+          description: Pools information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetPoolsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/balances/{walletAddress}:
+    get:
+      summary: Get rebalancer balances
+      description: |
+        Retrieves detailed balance information across all protocols and pools for a wallet address. This endpoint provides comprehensive financial data including token balances, net earnings, aggregate APY, and per-protocol/per-pool breakdowns.<br><br>
+
+        **Authentication**: Requires a valid API key. The wallet address must be a valid checksummed EOA address.<br><br>
+
+        **Token Filtering**: The optional `tokens` query parameter accepts a comma-separated list of token symbols (e.g., `USDC,MUSD,USDT`). If not provided, balances for all supported tokens are returned.<br><br>
+
+        **Balance Details**: For each token, the response includes:
+        - Total balance across all chains (raw units and human-readable format)
+        - Net earnings in USD (calculated as current balance minus net deposits/withdrawals)
+        - Aggregate APY (weighted average across all protocols)
+        - Per-chain breakdown with per-protocol and per-pool details<br><br>
+
+        **Withdraw Request**: Each pool balance includes optional `withdrawRequest` containing EIP-712 domain parameters, type definitions, and value structure for creating withdrawal signatures. The `value` field includes `token` and `poolContract` addresses, while `amount` and `deadline` must be supplied by the user when creating a withdrawal via `/v1/withdrawals` endpoint.<br><br>
+
+        **Summary**: The response includes an aggregate summary with total balance across all queried tokens, total net earnings, queried tokens, and queried chains.<br><br>
+
+        **Error Handling**: If blockchain queries fail or the wallet has no rebalancer configuration, appropriate error responses are returned. The endpoint uses an all-or-nothing approach - if any token query fails, the entire request fails with a 500 or 503 status code.
+      operationId: getRebalancerBalances
+      tags:
+        - Balances
+      parameters:
+        - name: walletAddress
+          in: path
+          required: true
+          description: User's Ethereum wallet address
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{40}$"
+          example: "0x1234567890123456789012345678901234567890"
+        - name: tokens
+          in: query
+          required: false
+          description: Comma-separated list of token symbols to query
+          schema:
+            type: string
+          example: "USDC,MUSD,USDT"
+      responses:
+        "200":
+          description: Rebalancer balances retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetBalancesResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                walletAddressBlank:
+                  $ref: "#/components/examples/WalletAddressBlank"
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+                tokenNotSupported:
+                  $ref: "#/components/examples/TokenNotSupported"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          description: Internal error or query failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                queryFailedBalances:
+                  $ref: "#/components/examples/QueryFailedBalances"
+                internalError:
+                  $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /v1/rewards/{walletAddress}:
+    get:
+      summary: Get rewards
+      description: |
+        Retrieves aggregated rewards data for the specified wallet address across supported reward sources.
+      operationId: getRewards
+      tags:
+        - Rewards
+      parameters:
+        - name: walletAddress
+          in: path
+          required: true
+          description: User's Ethereum wallet address
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{40}$"
+          example: "0x1234567890123456789012345678901234567890"
+      responses:
+        "200":
+          description: Rewards retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetRewardsResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                walletAddressBlank:
+                  $ref: "#/components/examples/WalletAddressBlank"
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/transaction-costs/{token}:
+    get:
+      summary: Get transaction costs
+      description: |
+        Retrieves gas fee estimates and minimum deposit/withdraw amounts per chain for the specified token.
+      operationId: getTransactionCosts
+      tags:
+        - Transaction Costs
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Token symbol
+          schema:
+            type: string
+            enum: [USDC, MUSD, USDT]
+          example: "USDC"
+      responses:
+        "200":
+          description: Transaction costs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionCostsResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                tokenNotSupported:
+                  $ref: "#/components/examples/TokenNotSupported"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/auth/challenge:
+    post:
+      summary: Create wallet challenge
+      description: |
+        Issues a challenge message that must be signed by the wallet owner.
+      operationId: createAuthChallenge
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrimaryUserByWalletAddressChallengeBody"
+            example:
+              address: "0x1234567890123456789012345678901234567890"
+      responses:
+        "200":
+          description: Challenge issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetChallengeResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                walletAddressBlank:
+                  $ref: "#/components/examples/WalletAddressBlank"
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/auth/challenge/verify:
+    post:
+      summary: Verify wallet challenge
+      description: |
+        Verifies the signed challenge and issues a JWT for authenticated requests.
+      operationId: verifyAuthChallenge
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteChallengeWithSignatureBodyV2"
+            example:
+              walletAddress: "0x1234567890123456789012345678901234567890"
+              signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+              extraAddress: null
+              chainKind: "LINEA"
+      responses:
+        "200":
+          description: Challenge verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyChallengeResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/balances/bridge/{walletAddress}:
+    get:
+      summary: Get bridge balances
+      description: |
+        Retrieves bridge balances for the specified wallet address.
+      operationId: getBridgeBalances
+      tags:
+        - Balances
+      parameters:
+        - name: walletAddress
+          in: path
+          required: true
+          description: User's Ethereum wallet address
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{40}$"
+          example: "0x1234567890123456789012345678901234567890"
+      responses:
+        "200":
+          description: Bridge balances retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetBridgeBalancesResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                walletAddressBlank:
+                  $ref: "#/components/examples/WalletAddressBlank"
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key required for all endpoints.
+    JwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Internal MetaLend JWT issued by `/v1/auth/challenge/verify`. Required for deposit, withdrawal, and config update endpoints.
+
+  schemas:
+    DepositRequest:
+      type: object
+      required:
+        - chain
+        - token
+        - walletAddress
+        - amount
+      properties:
+        chain:
+          type: string
+          enum: [LINEA]
+          default: LINEA
+          description: Blockchain network
+        token:
+          type: string
+          enum: [USDC, MUSD, USDT]
+          description: Token symbol (uppercase)
+        walletAddress:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          description: User's Ethereum wallet address (must be checksummed per EIP-55)
+        amount:
+          type: string
+          description: Amount in token's smallest unit (minimum 0.1 to cover gas fees)
+          example: "1000000"
+        validAfter:
+          type: string
+          description: Unix timestamp after which signature is valid (required for signature based approvals)
+          example: "1700000000"
+        validBefore:
+          type: string
+          description: Unix timestamp before which signature is valid (required for signature based approvals, max 1 min in future, > validAfter)
+          example: "1700000100"
+        nonce:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{64}$"
+          description: Unique nonce for signature (required for signature based approvals)
+        signature:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{130}$"
+          description: EIP-712 signature for authorization (required for signature based approvals)
+        tokenName:
+          type: string
+          description: Token name for EIP-712 domain (required for signature based approvals)
+          example: "USD Coin"
+        tokenVersion:
+          type: string
+          description: Token version for EIP-712 domain (required for signature based approvals)
+          example: "2"
+
+    TransactionCostsResponse:
+      type: object
+      description: Transaction costs keyed by chain name.
+      additionalProperties:
+        $ref: "#/components/schemas/GetTransactionCostsResponse"
+
+    GetTransactionCostsResponse:
+      type: object
+      required:
+        - depositCostRaw
+        - depositCostFormatted
+        - withdrawCostRaw
+        - withdrawCostFormatted
+        - minDepositAmountRaw
+        - minDepositAmountFormatted
+        - minWithdrawAmountRaw
+        - minWithdrawAmountFormatted
+      properties:
+        depositCostRaw:
+          type: string
+          description: Deposit gas cost in raw units
+        depositCostFormatted:
+          type: string
+          description: Deposit gas cost formatted
+        withdrawCostRaw:
+          type: string
+          description: Withdrawal gas cost in raw units
+        withdrawCostFormatted:
+          type: string
+          description: Withdrawal gas cost formatted
+        minDepositAmountRaw:
+          type: string
+          description: Minimum deposit amount in raw units
+        minDepositAmountFormatted:
+          type: string
+          description: Minimum deposit amount formatted
+        minWithdrawAmountRaw:
+          type: string
+          description: Minimum withdraw amount in raw units
+        minWithdrawAmountFormatted:
+          type: string
+          description: Minimum withdraw amount formatted
+
+    DepositResponse:
+      type: object
+      required:
+        - trackingId
+        - status
+        - expiresAt
+      properties:
+        trackingId:
+          type: string
+          description: Unique identifier to track deposit status
+          example: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+        status:
+          type: string
+          enum: [PROCESSING]
+          description: Current status of the deposit
+        expiresAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when tracking expires (5 minutes TTL)
+
+    DepositStatusResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [PROCESSING, SUCCESS, FAILED]
+          description: Current status of the deposit
+        protocol:
+          type: string
+          nullable: true
+          enum: [Aave, Morpho, Euler]
+          description: Protocol where funds were deposited
+          example: "Aave"
+        pool:
+          type: string
+          nullable: true
+          description: Pool address where funds were deposited
+          example: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+        chain:
+          type: string
+          nullable: true
+          description: Chain where deposit occurred
+          example: "LINEA"
+
+    WithdrawalRequest:
+      type: object
+      required:
+        - chain
+        - token
+        - walletAddress
+        - amount
+        - deadline
+        - signature
+        - poolContract
+      properties:
+        chain:
+          type: string
+          enum: [LINEA]
+          default: LINEA
+          description: Blockchain network
+        token:
+          type: string
+          enum: [USDC, MUSD, USDT]
+          description: Token symbol (uppercase)
+        walletAddress:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          description: User's Ethereum wallet address (must be checksummed per EIP-55)
+        amount:
+          type: string
+          description: Amount in token's smallest unit (minimum 0.1 to cover gas fees)
+          example: "500000"
+        deadline:
+          type: string
+          description: Unix timestamp deadline for withdrawal (max 1 minute in future)
+          example: "1700000100"
+        signature:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{130}$"
+          description: EIP-712 signature for withdrawal authorization
+        poolContract:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          description: Pool contract address to withdraw from (must be checksummed per EIP-55)
+
+    WithdrawalResponse:
+      type: object
+      required:
+        - trackingId
+        - status
+        - expiresAt
+      properties:
+        trackingId:
+          type: string
+          description: Signature used as tracking identifier. This is the same signature provided in the request.
+        status:
+          type: string
+          enum: [PROCESSING]
+          description: Current status of the withdrawal
+        expiresAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when tracking expires (5 minutes TTL)
+
+    WithdrawalStatusResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [PROCESSING, SUCCESS, FAILED]
+          description: Current status of the withdrawal
+
+    CreateOrUpdateConfigRequest:
+      type: object
+      required:
+        - walletAddress
+        - token
+        - domainIds
+        - protocolIds
+        - poolAddresses
+        - signature
+      properties:
+        walletAddress:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          description: User's Ethereum wallet address (must be checksummed per EIP-55)
+        token:
+          type: string
+          enum: [USDC, MUSD, USDT]
+          description: Token symbol to configure (must be uppercase)
+        domainIds:
+          type: array
+          items:
+            type: integer
+          description: Domain IDs - must match length and index values must be relevant to protocolIds and poolAddresses
+          example: [11, 11, 11]
+        protocolIds:
+          type: array
+          items:
+            type: integer
+            enum: [0, 1, 2]
+          description: Protocol IDs (0=Aave, 1=Morpho, 2=Euler) - must match length and index values must be relevant to domainIds and poolAddresses
+          example: [0, 1, 2]
+        poolAddresses:
+          type: array
+          items:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{40}$"
+          description: Pool contract addresses (must be checksummed per EIP-55) - must match length and index values must be relevant to domainIds and protocolIds
+        signature:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{130}$"
+          description: User signature for configuration
+        includeRewardsApy:
+          type: boolean
+          default: true
+          description: Include rewards in APY calculations
+        requiredTvl:
+          type: string
+          description: Required TVL threshold
+        requiredLiquidityMultiplier:
+          type: string
+          description: Required liquidity multiplier threshold
+        spendingCapRaw:
+          type: string
+          description: Spending cap in raw units
+
+    CreateOrUpdateConfigResponse:
+      type: object
+      required:
+        - walletAddress
+        - rebalancerAddress
+        - configuredToken
+        - operation
+      properties:
+        walletAddress:
+          type: string
+          description: User's wallet address
+          example: "0x1234567890123456789012345678901234567890"
+        rebalancerAddress:
+          type: string
+          description: Deployed rebalancer contract address
+          example: "0x1234567890123456789012345678901234567890"
+        configuredToken:
+          type: string
+          description: Configured token symbol
+          example: "USDC"
+        operation:
+          type: string
+          enum: [CREATED, UPDATED]
+          description: Operation performed
+          example: "CREATED"
+
+    GetConfigResponse:
+      type: object
+      required:
+        - walletAddress
+        - rebalancerAddress
+        - rebalancingManagerAddress
+        - configurations
+      properties:
+        walletAddress:
+          type: string
+          description: User's wallet address
+          example: "0x1234567890123456789012345678901234567890"
+        rebalancerAddress:
+          type: string
+          description: Deployed rebalancer contract address
+          example: "0x1234567890123456789012345678901234567890"
+        rebalancingManagerAddress:
+          type: string
+          description: RebalancingManager contract address
+          example: "0x1234567890123456789012345678901234567890"
+        configurations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Configuration"
+
+    Configuration:
+      type: object
+      required:
+        - token
+        - domainIds
+        - protocolIds
+        - poolAddresses
+        - includeRewardsApy
+        - totalGasFee
+        - rebalanceFrequency
+        - hasSignedConfig
+      properties:
+        token:
+          type: string
+          description: Token symbol
+          example: "USDC"
+        domainIds:
+          type: array
+          example: [11, 11]
+          items:
+            type: integer
+          description: Domain IDs for configuration - match index values of protocolIds and poolAddresses
+        protocolIds:
+          type: array
+          example: [0, 2]
+          items:
+            type: integer
+          description: Protocol IDs (0=Aave, 1=Morpho, 2=Euler) - match index values of domainIds and poolAddresses
+        poolAddresses:
+          type: array
+          example: ["0xghijklghijklghijklghijklghijklghijklmnop", "0xqrstuvqrstuvqrstuvqrstuvqrstuvqrstuvwxy"]
+          items:
+            type: string
+          description: Pool contract addresses - match index values of domainIds and protocolIds
+        includeRewardsApy:
+          type: boolean
+          description: Whether rewards are included in APY
+        totalGasFee:
+          type: string
+          example: "0.00"
+          description: Total gas fees accumulated
+        totalDeposits:
+          type: string
+          description: Total deposits
+        totalWithdrawals:
+          type: string
+          description: Total withdrawals
+        lastRebalanceTimestamp:
+          type: string
+          nullable: true
+          example: "2025-01-01T00:00:00Z"
+          description: Last rebalance timestamp
+        rebalanceFrequency:
+          type: integer
+          example: 7
+          description: Rebalance frequency in days
+        requiredTvl:
+          type: string
+          description: Required TVL threshold
+        requiredLiquidityMultiplier:
+          type: string
+          description: Required liquidity multiplier threshold
+        spendingCapRaw:
+          type: string
+          nullable: true
+          description: Spending cap in raw units
+        spendingCapFormatted:
+          type: string
+          nullable: true
+          description: Spending cap formatted
+        hasSignedConfig:
+          type: boolean
+          example: true
+          description: |
+            Indicates whether the user has signed a custom configuration for this specific token on this rebalancer.
+            - true: User has signed and set custom configuration
+            - false: Using default configuration values (not signed by user)
+
+    GetDefaultConfigResponse:
+      type: object
+      required:
+        - token
+        - rebalancingManagerAddress
+        - domainIds
+        - protocolIds
+        - poolAddresses
+      properties:
+        token:
+          type: string
+          description: Token symbol
+          example: "USDT"
+        rebalancingManagerAddress:
+          type: string
+          description: RebalancingManager contract address
+          example: "0x971ad06e6fde83b0265bd3ced5f5eaf30e269962"
+        domainIds:
+          type: array
+          items:
+            type: integer
+          description: Default domain IDs - match index values of protocolIds and poolAddresses
+          example: [11, 11]
+        protocolIds:
+          type: array
+          items:
+            type: integer
+          description: Default protocol IDs - match index values of domainIds and poolAddresses
+          example: [0, 2]
+        poolAddresses:
+          type: array
+          items:
+            type: string
+          description: Default pool contract addresses - match index values of domainIds and protocolIds
+          example: ["0xc47b8c00b0f69a36fa203ffeac0334874574a8ac", "0xcbef9be95738290188b25ca9a6dd2bec417a578c"]
+
+    GetPoolsResponse:
+      type: object
+      required:
+        - pools
+      properties:
+        pools:
+          type: array
+          items:
+            $ref: "#/components/schemas/Pool"
+
+    Pool:
+      type: object
+      required:
+        - protocolName
+        - protocolVersion
+        - protocolDescription
+        - protocolUrl
+        - poolAddress
+        - poolName
+        - chain
+        - chainId
+        - underlyingToken
+        - poolTvl
+        - poolLiquidity
+        - poolApy
+        - signData
+        - blacklisted
+      properties:
+        protocolName:
+          type: string
+          description: Protocol name
+          example: "Aave"
+        protocolVersion:
+          type: string
+          description: Protocol version
+          example: "V3"
+        protocolDescription:
+          type: string
+          description: Protocol description
+        protocolUrl:
+          type: string
+          format: uri
+          description: Protocol website URL
+        poolAddress:
+          type: string
+          description: Pool contract address
+          example: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+        poolName:
+          type: string
+          description: Pool name
+        chain:
+          type: string
+          description: Chain name
+          example: "linea"
+        chainId:
+          type: integer
+          description: Chain ID
+          example: 59144
+        underlyingToken:
+          $ref: "#/components/schemas/Token"
+        poolTvl:
+          type: string
+          description: Total Value Locked for the pool
+        poolLiquidity:
+          type: string
+          description: Available liquidity for the pool
+        poolApy:
+          $ref: "#/components/schemas/PoolApyInfo"
+        signData:
+          $ref: "#/components/schemas/PoolSignData"
+        blacklisted:
+          type: boolean
+          description: Indicates whether the pool is blacklisted
+
+    PoolSignData:
+      type: object
+      required:
+        - protocolId
+        - poolAddress
+        - domainId
+      properties:
+        protocolId:
+          type: integer
+          description: Protocol ID (0=Aave, 1=Morpho, 2=Euler)
+        poolAddress:
+          type: string
+          description: Pool contract address
+        domainId:
+          type: integer
+          description: Domain ID for the chain
+
+    PoolApyInfo:
+      type: object
+      required:
+        - native
+        - rewards
+        - total
+        - totalNet
+        - performanceFee
+      properties:
+        native:
+          type: string
+          description: Native APY percentage (formatted to 2 decimals)
+          example: "3.45"
+        rewards:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of reward tokens to their APYs (formatted to 2 decimals)
+          example:
+            Merkle: "1.23"
+            Brevis: "0.87"
+        total:
+          type: string
+          description: Total APY percentage (formatted to 2 decimals)
+          example: "5.55"
+        totalNet:
+          type: string
+          description: Total net APY percentage (formatted to 2 decimals)
+          example: "4.55"
+        performanceFee:
+          type: string
+          description: Performance fee percentage (formatted to 2 decimals)
+          example: "1.00"
+
+    Token:
+      type: object
+      required:
+        - symbol
+        - name
+        - address
+        - decimals
+      properties:
+        symbol:
+          type: string
+          description: Token symbol
+          enum: [USDC, MUSD, USDT]
+          example: "USDC"
+        name:
+          type: string
+          description: Token full name
+          example: "USD Coin"
+        address:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          example: "0x1234567890123456789012345678901234567890"
+          description: Token contract address
+        decimals:
+          type: integer
+          description: Token decimals
+          example: 6
+        version:
+          type: string
+          nullable: true
+          description: Token contract version
+
+    GetBalancesResponse:
+      type: object
+      required:
+        - walletAddress
+        - rebalancerAddress
+        - perToken
+        - summary
+      properties:
+        walletAddress:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          example: "0x1234567890123456789012345678901234567890"
+          description: User's Ethereum wallet address
+        rebalancerAddress:
+          type: string
+          pattern: "^0x[a-fA-F0-9]{40}$"
+          example: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+          description: Rebalancer contract address
+        perToken:
+          type: array
+          items:
+            $ref: "#/components/schemas/TokenBalance"
+        summary:
+          $ref: "#/components/schemas/Summary"
+
+    Summary:
+      type: object
+      required:
+        - totalBalanceFormatted
+        - totalNetEarnings
+        - queriedTokens
+        - queriedChains
+      properties:
+        totalBalanceFormatted:
+          type: string
+          description: Total balance across all tokens (formatted to 2 decimals)
+          example: "5000.00"
+        totalNetEarnings:
+          type: string
+          description: Total net earnings in USD (formatted to 2 decimals)
+          example: "45.67"
+        queriedTokens:
+          type: array
+          items:
+            type: string
+          description: List of queried token symbols
+          example: ["USDC", "MUSD", "USDT"]
+        queriedChains:
+          type: array
+          items:
+            type: string
+          description: List of queried chain names
+          example: ["linea"]
+
+    TokenBalance:
+      type: object
+      required:
+        - token
+        - totalBalanceRaw
+        - totalBalanceFormatted
+        - netEarning
+        - aggregateApy
+        - perChain
+      properties:
+        token:
+          type: string
+          description: Token symbol
+          example: "USDC"
+        totalBalanceRaw:
+          type: string
+          description: Total balance in raw units
+          example: "1000000000"
+        totalBalanceFormatted:
+          type: string
+          description: Human-readable balance (formatted to 2 decimals)
+          example: "1000.00"
+        netEarning:
+          type: string
+          description: Net earnings in USD (formatted to 2 decimals)
+          example: "12.34"
+        aggregateApy:
+          type: string
+          description: Weighted average APY across all protocols (formatted to 2 decimals)
+          example: "4.56"
+        perChain:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChainBalance"
+        spendingInfo:
+          $ref: "#/components/schemas/SpendingInfo"
+        bridgeBalances:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/BridgeBalance"
+
+    ChainBalance:
+      type: object
+      required:
+        - chain
+        - chainId
+        - totalBalanceRaw
+        - totalBalanceFormatted
+        - perProtocol
+      properties:
+        chain:
+          type: string
+          description: Chain name
+          example: "linea"
+        chainId:
+          type: integer
+          description: Chain ID
+          example: 59144
+        totalBalanceRaw:
+          type: string
+          description: Total balance in raw units
+        totalBalanceFormatted:
+          type: string
+          description: Total balance formatted
+        perProtocol:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProtocolBalance"
+
+    ProtocolBalance:
+      type: object
+      required:
+        - protocolName
+        - protocolIconUrl
+        - totalBalanceRaw
+        - totalBalanceFormatted
+        - perPool
+      properties:
+        protocolName:
+          type: string
+          description: Protocol name
+        protocolIconUrl:
+          type: string
+          description: Protocol icon URL
+        totalBalanceRaw:
+          type: string
+          description: Total balance in protocol (raw units)
+        totalBalanceFormatted:
+          type: string
+          description: Human-readable balance in protocol (formatted to 2 decimals)
+          example: "28.05"
+        perPool:
+          type: array
+          items:
+            $ref: "#/components/schemas/PoolBalance"
+
+    PoolBalance:
+      type: object
+      required:
+        - poolAddress
+        - poolName
+        - balanceRaw
+        - balanceFormatted
+        - apy
+        - chain
+        - chainId
+      properties:
+        poolAddress:
+          type: string
+          description: Pool contract address
+          example: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+        poolName:
+          type: string
+          description: Pool name
+        balanceRaw:
+          type: string
+          description: Balance in pool (raw units)
+        balanceFormatted:
+          type: string
+          description: Human-readable pool balance (formatted to 2 decimals)
+          example: "11.23"
+        apy:
+          type: string
+          description: Current APY for this pool (formatted to 2 decimals)
+          example: "4.56"
+        chain:
+          type: string
+          description: Chain name
+        chainId:
+          type: integer
+          description: Chain ID
+        withdrawRequest:
+          $ref: "#/components/schemas/WithdrawalRequestData"
+
+    SpendingInfo:
+      type: object
+      required:
+        - lineaUsdcBalanceRaw
+        - lineaUsdcBalanceFormatted
+        - lineaAaveUsdcBalanceRaw
+        - lineaAaveUsdcBalanceFormatted
+        - lineaAaveApy
+      properties:
+        lineaUsdcBalanceRaw:
+          type: string
+        lineaUsdcBalanceFormatted:
+          type: string
+        lineaAaveUsdcBalanceRaw:
+          type: string
+        lineaAaveUsdcBalanceFormatted:
+          type: string
+        lineaAaveApy:
+          type: string
+
+    WithdrawalRequestData:
+      type: object
+      required:
+        - domain
+        - types
+        - value
+      properties:
+        domain:
+          $ref: "#/components/schemas/Domain"
+        types:
+          $ref: "#/components/schemas/Types"
+        value:
+          $ref: "#/components/schemas/Value"
+
+    Domain:
+      type: object
+      required:
+        - name
+        - version
+        - chainId
+        - verifyingContract
+      properties:
+        name:
+          type: string
+          example: "MetaLend Rebalancing"
+        version:
+          type: string
+          example: "4.0.0"
+        chainId:
+          type: integer
+          example: 59144
+        verifyingContract:
+          type: string
+          description: Contract address
+
+    Types:
+      type: object
+      required:
+        - Withdrawal
+      properties:
+        Withdrawal:
+          type: array
+          items:
+            $ref: "#/components/schemas/TypeDetail"
+
+    TypeDetail:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          description: Field name
+          example: "token"
+        type:
+          type: string
+          description: Field type
+          example: "address"
+
+    Value:
+      type: object
+      required:
+        - token
+        - poolContract
+      properties:
+        token:
+          type: string
+          description: Token address
+        poolContract:
+          type: string
+          description: Pool contract address
+        amount:
+          type: string
+          nullable: true
+          description: Withdrawal amount
+        deadline:
+          type: string
+          nullable: true
+          description: Withdrawal deadline (Unix epoch timestamp)
+          example: "1763558621"
+
+    GetBridgeBalancesResponse:
+      type: object
+      required:
+        - walletAddress
+        - rebalancerAddress
+        - token
+        - balances
+      properties:
+        walletAddress:
+          type: string
+          description: Wallet address
+        rebalancerAddress:
+          type: string
+          description: Rebalancer contract address
+        token:
+          type: string
+          description: Token symbol
+        balances:
+          type: array
+          items:
+            $ref: "#/components/schemas/BridgeBalance"
+
+    BridgeBalance:
+      type: object
+      required:
+        - destinationPool
+        - balanceRaw
+        - balanceFormatted
+        - estimatedCompletion
+        - isForSpending
+      properties:
+        sourcePool:
+          $ref: "#/components/schemas/Pool"
+          nullable: true
+        destinationPool:
+          $ref: "#/components/schemas/Pool"
+        balanceRaw:
+          type: string
+          description: Balance in raw units
+        balanceFormatted:
+          type: string
+          description: Balance formatted
+        estimatedCompletion:
+          type: string
+          description: Estimated completion timestamp or duration
+        isForSpending:
+          type: boolean
+          description: Whether the balance is reserved for spending
+
+    GetRewardsResponse:
+      type: object
+      required:
+        - walletAddress
+        - timestamp
+        - totalClaimedUsd
+        - totalPendingUsd
+        - rewards
+      properties:
+        walletAddress:
+          type: string
+          description: Wallet address
+        timestamp:
+          type: string
+          description: ISO timestamp
+        totalClaimedUsd:
+          type: string
+          description: Total claimed rewards in USD
+        totalPendingUsd:
+          type: string
+          description: Total pending rewards in USD
+        rewards:
+          type: array
+          items:
+            $ref: "#/components/schemas/RewardSource"
+
+    RewardSource:
+      type: object
+      required:
+        - source
+        - rewardItems
+      properties:
+        source:
+          type: string
+          description: Reward source name
+        rewardItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/RewardItem"
+
+    RewardItem:
+      type: object
+      required:
+        - token
+        - chain
+        - claimedRaw
+        - claimedFormatted
+        - claimedUsd
+        - pendingRaw
+        - pendingFormatted
+        - pendingUsd
+        - distributorAddress
+      properties:
+        token:
+          $ref: "#/components/schemas/Token"
+        chain:
+          $ref: "#/components/schemas/RewardChainInfo"
+        claimedRaw:
+          type: string
+        claimedFormatted:
+          type: string
+        claimedUsd:
+          type: string
+        pendingRaw:
+          type: string
+        pendingFormatted:
+          type: string
+        pendingUsd:
+          type: string
+        distributorAddress:
+          type: string
+        proof:
+          type: array
+          nullable: true
+          items:
+            type: string
+        vestingInfo:
+          $ref: "#/components/schemas/VestingInfo"
+          nullable: true
+        claimTransaction:
+          $ref: "#/components/schemas/ClaimTransaction"
+          nullable: true
+
+    RewardChainInfo:
+      type: object
+      required:
+        - id
+        - name
+        - icon
+        - endOfDisputePeriod
+        - explorers
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        icon:
+          type: string
+        endOfDisputePeriod:
+          type: integer
+        explorers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChainExplorer"
+
+    ChainExplorer:
+      type: object
+      required:
+        - chainId
+        - id
+        - type
+        - url
+      properties:
+        chainId:
+          type: integer
+        id:
+          type: string
+        type:
+          type: string
+        url:
+          type: string
+
+    ClaimTransaction:
+      type: object
+      required:
+        - to
+        - chainId
+        - chain
+        - method
+        - params
+        - abi
+        - calldata
+      properties:
+        to:
+          type: string
+        chainId:
+          type: integer
+        chain:
+          type: string
+        method:
+          type: string
+        params:
+          $ref: "#/components/schemas/ClaimTransactionParams"
+        abi:
+          type: string
+        calldata:
+          type: string
+
+    ClaimTransactionParams:
+      type: object
+      required:
+        - distributor
+        - tokens
+        - amounts
+        - proofs
+      properties:
+        distributor:
+          type: string
+        tokens:
+          type: array
+          items:
+            type: string
+        amounts:
+          type: array
+          items:
+            type: string
+        proofs:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+
+    VestingInfo:
+      type: object
+      required:
+        - totalAllocatedRaw
+        - totalAllocatedFormatted
+        - unlockedRaw
+        - unlockedFormatted
+        - lockedRaw
+        - lockedFormatted
+        - vestingStartTime
+        - vestingEndTime
+        - vestingDuration
+        - vestingGranularity
+        - initialUnlockBps
+        - bpsDenominator
+        - progressPercentage
+        - daysElapsed
+        - daysTotal
+        - stepsCompleted
+        - stepsTotal
+      properties:
+        totalAllocatedRaw:
+          type: string
+        totalAllocatedFormatted:
+          type: string
+        unlockedRaw:
+          type: string
+        unlockedFormatted:
+          type: string
+        lockedRaw:
+          type: string
+        lockedFormatted:
+          type: string
+        vestingStartTime:
+          type: integer
+        vestingEndTime:
+          type: integer
+        vestingDuration:
+          type: integer
+        vestingGranularity:
+          type: integer
+        initialUnlockBps:
+          type: integer
+        bpsDenominator:
+          type: integer
+        progressPercentage:
+          type: string
+        daysElapsed:
+          type: integer
+        daysTotal:
+          type: integer
+        stepsCompleted:
+          type: integer
+        stepsTotal:
+          type: integer
+
+    PrimaryUserByWalletAddressChallengeBody:
+      type: object
+      required:
+        - address
+      properties:
+        address:
+          type: string
+          description: Wallet address
+
+    CompleteChallengeWithSignatureBodyV2:
+      type: object
+      required:
+        - walletAddress
+        - signature
+      properties:
+        walletAddress:
+          type: string
+          description: Wallet address
+        signature:
+          type: string
+          description: Signed challenge message
+        extraAddress:
+          type: string
+          nullable: true
+          description: Optional extra address
+        chainKind:
+          type: string
+          nullable: true
+          description: Chain kind identifier
+
+    GetChallengeResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Challenge message to sign
+
+    VerifyChallengeResponse:
+      type: object
+      required:
+        - jwt
+      properties:
+        jwt:
+          type: string
+          description: Issued JWT for authenticated requests
+
+    ApiError:
+      type: object
+      required:
+        - code
+        - internalCode
+        - message
+      properties:
+        code:
+          type: string
+          description: Error category identifier
+        internalCode:
+          type: string
+          description: More specific error identifier
+        message:
+          type: string
+          description: Human-readable error message
+        requestId:
+          type: string
+          format: uuid
+          description: Unique request identifier for tracking
+        retryAfterSeconds:
+          type: integer
+          description: Seconds to wait before retrying (for rate limiting)
+
+  examples:
+    UnauthorizedNoHeader:
+      summary: No authorization header
+      value:
+        code: "UNAUTHORIZED"
+        internalCode: "NO_AUTH_PROVIDED"
+        message: "No valid authorization header provided"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    UnauthorizedInvalidSignature:
+      summary: Invalid signature
+      value:
+        code: "UNAUTHORIZED"
+        internalCode: "UNAUTHORIZED"
+        message: "Invalid signature: signer does not match user address"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidAmountGreaterThanZero:
+      summary: Invalid amount greater than zero
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_AMOUNT"
+        message: "Amount must be greater than zero"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidAmountMinimumGas:
+      summary: Invalid amount minimum gas
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_AMOUNT"
+        message: "Amount must be at least 0.2 to cover gas fees"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidAmountFormat:
+      summary: Invalid amount format
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_AMOUNT"
+        message: "Amount must be a valid number"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    SignatureNotAllowed:
+      summary: Signature not allowed
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "SIGNATURE_NOT_ALLOWED"
+        message: "Signature-based approval is not supported for USDT"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidTimestampBeforeGreaterThanAfter:
+      summary: Invalid timestamp before greater than after
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_TIMESTAMPS"
+        message: "validBefore must be greater than validAfter"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidTimestampAfterMustBeInPastOrNow:
+      summary: Invalid timestamp after must be in past or now
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_TIMESTAMPS"
+        message: "validAfter must be in the past or now"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidTimestampBeforeMustBeInFuture:
+      summary: Invalid timestamp before must be future
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_TIMESTAMPS"
+        message: "validBefore must be in the future"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidTimestampBeforeMustBeAtMostOneMinuteInFuture:
+      summary: Invalid timestamp before too far
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_TIMESTAMPS"
+        message: "validBefore must be at most 1 minute in the future"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    TimestampsRequired:
+      summary: Timestamp required
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "TIMESTAMPS_REQUIRED"
+        message: "validAfter and validBefore are required when using signature-based approval"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    TimestampsNotAllowed:
+      summary: Timestamps not allowed
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "TIMESTAMPS_NOT_ALLOWED"
+        message: "Timestamps should not be provided when signature is not use"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    NonceRequired:
+      summary: Nonce required
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "NONCE_REQUIRED"
+        message: "Nonce is required when using signature-based approval"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    NonceNotAllowed:
+      summary: Nonce not allowed
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "NONCE_NOT_ALLOWED"
+        message: "Nonce should not be provided when signature is not used"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    TokenNameVersionRequired:
+      summary: Token name and version required
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "TOKEN_NAME_AND_VERSION_REQUIRED"
+        message: "tokenName and tokenVersion are required when using signature-based approval"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    TokenNameVersionNotAllowed:
+      summary: Token name and version not allowed
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "TOKEN_NAME_AND_VERSION_NOT_ALLOWED"
+        message: "tokenName and tokenVersion should not be provided when signature is not used"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    DeadlineNotUnix:
+      summary: Deadline not UNIX
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_DEADLINE"
+        message: "Deadline must be a valid Unix timestamp"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    DeadlineMustBeInFuture:
+      summary: Deadline must be in future
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_DEADLINE"
+        message: "Deadline must be in the future"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    DeadlineMaxOneMinuteInFuture:
+      summary: Deadline too far in future
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_DEADLINE"
+        message: "Deadline must be at most 1 minute in the future"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidTrackingId:
+      summary: Invalid tracking ID
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_TRACKING_ID"
+        message: "Invalid tracking ID format. Expected valid signature or UUID"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    MissingTrackingId:
+      summary: Missing tracking ID
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_TRACKING_ID"
+        message: "Tracking ID cannot be blank"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    TrackingIdNotFound:
+      summary: Tracking ID not found
+      value:
+        code: "NOT_FOUND"
+        internalCode: "TRACKING_ID_NOT_FOUND"
+        message: "Tracking ID not found or expired"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    WalletAddressBlank:
+      summary: Wallet address blank
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_WALLET_ADDRESS"
+        message: "Wallet address cannot be blank"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidAddressFormat:
+      summary: Invalid address format
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_ADDRESS"
+        message: "Invalid address format. Expected: 0x followed by 40 hexadecimal characters"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidAddressCheckSum:
+      summary: Invalid address checksum
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_ADDRESS"
+        message: "Invalid Ethereum address checksum. Please ensure the address is properly checksummed (EIP-55)"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    TokenNotSupported:
+      summary: Token not supported
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_TOKEN"
+        message: "Token RLUSD is not supported. Supported tokens: USDC, MUSD, USDT"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    ConfigArraysMismatchCount:
+      summary: Config arrays mismatch count
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "MISMATCHED_ARRAY_LENGTHS"
+        message: "Configuration arrays length mismatch: chains(2), protocols(2), pools(1)."
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    ChainBlank:
+      summary: Chain blank
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "CHAIN_BLANK"
+        message: "Chain cannot be blank"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    ChainNotSupported:
+      summary: Chain ID not supported
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_CHAIN"
+        message: "Chain '1' is not supported. Supported chain IDs: (11)"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    ProtocolIdNotSupported:
+      summary: Protocol ID not supported
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_PROTOCOL"
+        message: "Protocol ID '5' is not supported. Supported protocol IDs: 0 (Aave), 1 (Morpho), 2 (Euler)"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    ProtocolNotFound:
+      summary: Protocol not found
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_PROTOCOL"
+        message: "Could not find protocol for contract 0xCBeF9be95738290188B25ca9A6Dd2bEc417a578c on chain LINEA for token USDT"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    SignatureRequired:
+      summary: Signature required
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "SIGNATURE_REQUIRED"
+        message: "Signature is required"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidSignatureFormat:
+      summary: Invalid signature format
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_SIGNATURE"
+        message: "Invalid signature format. Expected: 0x followed by 130 hexadecimal characters"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    FailedWithdrawSignatureValidation:
+      summary: Failed withdrawal signature validation
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_SIGNATURE"
+        message: "Failed to validate withdrawal signature: ${e.message}"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    ConfigValidationFailed:
+      summary: Config validation failed
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "SIGNATURE_REQUIRED"
+        message: "Failed to validate config signature"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidPoolIdentifier:
+      summary: Invalid pool identifier
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_POOL"
+        message: "Protocol ID '5' at position 0 is not supported. Supported protocol IDs: 0 (Aave), 1 (Morpho), 2 (Euler)"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InsufficientApproval:
+      summary: Token approval does not match the required amount
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INSUFFICIENT_APPROVAL"
+        message: "Token approval does not meet the required amount. Required: 1000000, Current: 0"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    SmartWalletNotSupported:
+      summary: Smart wallet not supported
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "SMART_WALLET_NOT_SUPPORTED"
+        message: "Smart wallets are not supported. Please use an Externally Owned Account (EOA) wallet. Signature length: 256, expected: 132"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    QueryFailedBalances:
+      summary: Query failed balances
+      value:
+        code: "INTERNAL_ERROR"
+        internalCode: "QUERY_FAILED"
+        message: "Failed to query rebalancer balances"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+  responses:
+    UnauthorizedNoHeader:
+      description: No authorization header provided
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          examples:
+            unauthorizedNoHeader:
+              $ref: "#/components/examples/UnauthorizedNoHeader"
+
+    UnauthorizedInvalidSignature:
+      description: Missing or invalid JWT token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          examples:
+            unauthorizedInvalidSignature:
+              $ref: "#/components/examples/UnauthorizedInvalidSignature"
+
+    Forbidden:
+      description: JWT wallet address mismatch
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          examples:
+            jwtMismatch:
+              summary: JWT address mismatch
+              value:
+                code: "FORBIDDEN"
+                internalCode: "JWT_ADDRESS_MISMATCH"
+                message: "JWT wallet address does not match the address in the request. JWT address: 0xabc..., Request address: 0xdef..."
+                requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+                retryAfterSeconds: null
+
+    # TODO: add limits to relevant endpoints
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          examples:
+            Rate Limit Exceeded:
+              summary: Rate limit exceeded
+              value:
+                code: "RATE_LIMIT_EXCEEDED"
+                internalCode: "RATE_LIMIT_EXCEEDED"
+                message: "Rate limit exceeded. Please try again later"
+                requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+                retryAfterSeconds: 60
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          examples:
+            Internal Error:
+              value:
+                code: "INTERNAL_ERROR"
+                internalCode: "INTERNAL_ERROR"
+                message: "An unexpected error occurred while processing your request"
+                requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+                retryAfterSeconds: null
+
+    ServiceUnavailable:
+      description: Service temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          examples:
+            Blockchain Unavailable:
+              summary: Blockchain unavailable
+              value:
+                code: "INTERNAL_ERROR"
+                internalCode: "BLOCKCHAIN_UNAVAILABLE"
+                message: "Failed to check token approval: ${e.message}"
+                requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+                retryAfterSeconds: null
+
+tags:
+  - name: Deposits
+    description: Deposit operations for rebalancing
+  - name: Withdrawals
+    description: Withdrawal operations from protocols
+  - name: Configuration
+    description: Rebalancer configuration management
+  - name: Pools
+    description: Protocol and pool information
+  - name: Balances
+    description: Balance queries across protocols
+  - name: Rewards
+    description: Reward aggregation and claim data
+  - name: Transaction Costs
+    description: Transaction cost queries
+  - name: Auth
+    description: Challenge/verify authentication
