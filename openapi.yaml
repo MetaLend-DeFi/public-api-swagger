@@ -461,7 +461,14 @@ paths:
         - `domainIds[1]`, `protocolIds[1]`, `poolAddresses[1]` = second pool
         - And so on...
 
-        **Domain IDs**: Currently only `11` is supported, representing the LINEA network. All domain IDs in the array must be `11`.
+        **Domain IDs**: 
+        - `11` = LINEA
+        - `6` = BASE
+        - `7` = POLYGON
+        - `3` = ARBITRUM
+        - `1` = AVAX
+        - `2` = OPTIMISM
+        - `0` = ETH
 
         **Protocol IDs**: Maps to supported protocols:
         - `0` = Aave
@@ -470,7 +477,20 @@ paths:
 
         **Pool Contracts**: Each pool contract address must be a valid checksummed Ethereum address (EIP-55) corresponding to a pool on the specified protocol. Pool addresses can be obtained from the `/v1/pools` endpoint.
 
-        **Signature Requirement**: The `signature` field must contain an EIP-712 signature created by wallet. The signature must be of length 132 (0x + 130 characters) and must be signed by the wallet address specified in the `walletAddress` field.
+        **Signature Requirement**: The `signature` field must be created using the following steps:
+
+        1. ABI-encode the following parameters in order:
+          - `address` — `rebalancingManagerAddress` (from `GET /v1/config/{walletAddress}`)
+          - `uint8[]` — `protocolIds` array
+          - `address[]` — `poolAddresses` array
+          - `uint32[]` — `domainIds` array
+          - `uint256` — `spendingCapRaw` (use `"0"` if not set)
+
+        2. Compute `keccak256` of the ABI-encoded bytes.
+
+        3. Sign the resulting hash using `personal_sign` (i.e. `eth_sign` with the standard Ethereum prefix `\x19Ethereum Signed Message:\n32`). In viem this is `walletClient.signMessage({ account, message: { raw: hash } })`.
+
+        The signature must be 132 characters long (0x + 130 hex characters) and must be signed by the wallet address in the `walletAddress` field.
 
         **Include Rewards APY**: The optional `includeRewardsApy` boolean flag (default: `true`) determines whether reward  APYs should be included in APY calculations during rebalancing decisions.
 
