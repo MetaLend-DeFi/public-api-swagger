@@ -540,8 +540,8 @@ paths:
                   $ref: "#/components/examples/SignatureRequired"
                 configValidationFailed:
                   $ref: "#/components/examples/ConfigValidationFailed"
-                unauthorizedInvalidSignature:
-                  $ref: "#/components/examples/UnauthorizedInvalidSignature"
+                configInvalidSignature:
+                  $ref: "#/components/examples/ConfigInvalidSignature"
 
         "401":
           $ref: "#/components/responses/UnauthorizedNoHeader"
@@ -596,6 +596,7 @@ paths:
                 walletAddress: "0x1234567890123456789012345678901234567890"
                 rebalancerAddress: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
                 rebalancingManagerAddress: "0x971ad06e6fde83b0265bd3ced5f5eaf30e269962"
+                rebalancerExists: true
                 configurations:
                   - token: "USDC"
                     domainIds: [11]
@@ -656,12 +657,8 @@ paths:
                   $ref: "#/components/examples/InvalidAddressFormat"
                 invalidAddressCheckSum:
                   $ref: "#/components/examples/InvalidAddressCheckSum"
-                unauthorizedInvalidSignature:
-                  $ref: "#/components/examples/UnauthorizedInvalidSignature"
         "401":
           $ref: "#/components/responses/UnauthorizedNoHeader"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "429":
           $ref: "#/components/responses/RateLimitExceeded"
         "500":
@@ -690,7 +687,7 @@ paths:
           description: Token symbol (uppercase)
           schema:
             type: string
-            enum: [USDC, MUSD, USDT]
+            enum: [USDC, MUSD, USDT, RLUSD]
           example: "USDC"
       responses:
         "200":
@@ -921,7 +918,11 @@ paths:
             schema:
               $ref: "#/components/schemas/GetChallengeRequest"
             example:
-              address: "0x1234567890123456789012345678901234567890"
+              walletAddress: "0x14848abF0125De79e0A5F3caA7F4EA9664a988e8"
+              siweDomain: "app.metalend.tech"
+              siweUri: "https://app.metalend.tech"
+              siweStatement: "Sign in with Ethereum to MetaLend"
+              chain: "ETH"
       responses:
         "200":
           description: Challenge issued successfully
@@ -942,6 +943,10 @@ paths:
                   $ref: "#/components/examples/InvalidAddressFormat"
                 invalidAddressCheckSum:
                   $ref: "#/components/examples/InvalidAddressCheckSum"
+                invalidSiweDetails:
+                  $ref: "#/components/examples/InvalidSiweDetails"
+                chainNotSupported:
+                  $ref: "#/components/examples/ChainNotSupported"
         "401":
           $ref: "#/components/responses/UnauthorizedNoHeader"
         "429":
@@ -949,7 +954,7 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  /v1/auth/challenge/verify:
+  /v1/auth/verify:
     post:
       summary: Verify wallet challenge
       description: |
@@ -964,10 +969,9 @@ paths:
             schema:
               $ref: "#/components/schemas/VerifyChallengeRequest"
             example:
-              walletAddress: "0x1234567890123456789012345678901234567890"
-              signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
-              extraAddress: null
-              chainKind: "LINEA"
+              walletAddress: "0x14848abF0125De79e0A5F3caA7F4EA9664a988e8"
+              signature: "0x9c1efc293e476948580195863a66203816a3d437a04a92df95c1be979010031c35dbd856110eb161aa59f72cbfe49ff3a64fda3bdb094c2c321edfb13c8215161b"
+              chain: "base"
       responses:
         "200":
           description: Challenge verified successfully
@@ -981,8 +985,28 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+              examples:
+                walletAddressBlank:
+                  $ref: "#/components/examples/WalletAddressBlank"
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+                chainNotSupported:
+                  $ref: "#/components/examples/ChainNotSupported"
         "401":
-          $ref: "#/components/responses/UnauthorizedNoHeader"
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                noAuthHeader:
+                  $ref: "#/components/examples/UnauthorizedNoHeader"
+                invalidSignature:
+                  $ref: "#/components/examples/UnauthorizedInvalidSignature"
+                notAnEvmAddress:
+                  $ref: "#/components/examples/NotAnEvmAddress"
         "429":
           $ref: "#/components/responses/RateLimitExceeded"
         "500":
@@ -1050,12 +1074,39 @@ components:
       type: object
       required:
         - walletAddress
+        - siweDomain
+        - siweUri
+        - siweStatement
       properties:
         walletAddress:
           type: string
           pattern: "^0x[a-fA-F0-9]{40}$"
           description: User's Ethereum wallet address (must be checksummed per EIP-55)
           example: "0x14848abF0125De79e0A5F3caA7F4EA9664a988e8"
+        siweDomain:
+          type: string
+          description: The domain requesting the SIWE signature (e.g. "app.metalend.tech")
+          example: "app.metalend.tech"
+        siweUri:
+          type: string
+          description: The URI for the SIWE message (e.g. "https://app.metalend.tech")
+          example: "https://app.metalend.tech"
+        siweStatement:
+          type: string
+          description: The human-readable statement shown to the user in the SIWE signing prompt
+          example: "Sign in with Ethereum to MetaLend"
+        chain:
+          type: string
+          description: The blockchain network. Defaults to "ETH" if omitted.
+          enum:
+            - ETH
+            - BASE
+            - POLYGON
+            - ARBITRUM
+            - OPTIMISM
+            - AVAX
+            - LINEA
+          example: "ETH"
     
     GetChallengeResponse:
       type: object
@@ -1085,7 +1136,7 @@ components:
           type: string
           enum: [base]
           nullable: true
-          default: "null"
+          default: null
           description: When signing with a Smart Contract Wallet, specify the chain kind. Currently only Coinbase Smart Wallet is supported. This provides signature verification context
           example: "base"
 
@@ -1354,12 +1405,15 @@ components:
           description: Include rewards in APY calculations
         requiredTvl:
           type: string
+          default: "0"
           description: Required TVL threshold
         requiredLiquidityMultiplier:
           type: string
+          default: "0"
           description: Required liquidity multiplier threshold
         spendingCapRaw:
           type: string
+          default: "0"
           description: Spending cap in raw units
 
     CreateOrUpdateConfigResponse:
@@ -1394,6 +1448,7 @@ components:
         - walletAddress
         - rebalancerAddress
         - rebalancingManagerAddress
+        - rebalancerExists
         - configurations
       properties:
         walletAddress:
@@ -1403,16 +1458,19 @@ components:
         rebalancerAddress:
           type: string
           description: Deployed rebalancer contract address
-          example: "0x1234567890123456789012345678901234567890"
+          example: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
         rebalancingManagerAddress:
           type: string
           description: RebalancingManager contract address
-          example: "0x1234567890123456789012345678901234567890"
+          example: "0x971ad06e6fde83b0265bd3ced5f5eaf30e269962"
+        rebalancerExists:
+          type: boolean
+          description: Whether a rebalancer contract has been deployed for this wallet
+          example: true
         configurations:
           type: array
           items:
             $ref: "#/components/schemas/Configuration"
-
     Configuration:
       type: object
       required:
@@ -2290,8 +2348,26 @@ components:
       summary: Invalid signature
       value:
         code: "UNAUTHORIZED"
-        internalCode: "UNAUTHORIZED"
-        message: "Invalid signature: signer does not match user address"
+        internalCode: "INVALID_SIGNATURE"
+        message: "Invalid signature for address '0x14848abf0125de79e0a5f3caa7f4ea9664a988e8'"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+    
+    ConfigInvalidSignature:
+      summary: Invalid config signature
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_SIGNATURE"
+        message: "Invalid signature for address '0x1234567890123456789012345678901234567890': Config signature verification failed"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+      
+    NotAnEvmAddress:
+      summary: Not an EVM address
+      value:
+        code: "UNAUTHORIZED"
+        internalCode: "INVALID_EVM_ADDRESS"
+        message: "Invalid wallet address"
         requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
         retryAfterSeconds: null
 
@@ -2502,11 +2578,20 @@ components:
         requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
         retryAfterSeconds: null
 
+    InvalidSiweDetails:
+      summary: Invalid SIWE details
+      value:
+        code: "ILLEGAL_ARGUMENT"
+        internalCode: "INVALID_SIWE_DETAILS"
+        message: "Invalid SIWE details: SIWE domain cannot be blank"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
     TokenNotSupported:
       summary: Token not supported
       value:
         code: "ILLEGAL_ARGUMENT"
-        internalCode: "INVALID_TOKEN"
+        internalCode: "TOKEN_NOT_SUPPORTED"
         message: "Token RLUSD is not supported. Supported tokens: USDC, MUSD, USDT"
         requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
         retryAfterSeconds: null
@@ -2530,11 +2615,11 @@ components:
         retryAfterSeconds: null
 
     ChainNotSupported:
-      summary: Chain ID not supported
+      summary: Chain not supported
       value:
         code: "ILLEGAL_ARGUMENT"
-        internalCode: "INVALID_CHAIN"
-        message: "Chain '1' is not supported. Supported chain IDs: (11)"
+        internalCode: "CHAIN_NOT_SUPPORTED"
+        message: "Chain 'STX' is not supported. Supported chains: eth, base, polygon, arbitrum, optimism, avax, linea"
         requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
         retryAfterSeconds: null
 
@@ -2587,8 +2672,8 @@ components:
       summary: Config validation failed
       value:
         code: "ILLEGAL_ARGUMENT"
-        internalCode: "SIGNATURE_REQUIRED"
-        message: "Failed to validate config signature"
+        internalCode: "INVALID_SIGNATURE"
+        message: "Invalid signature for address '0x1234567890123456789012345678901234567890': Config signature is blank"
         requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
         retryAfterSeconds: null
 
@@ -2650,18 +2735,18 @@ components:
               $ref: "#/components/examples/UnauthorizedInvalidSignature"
 
     Forbidden:
-      description: JWT wallet address mismatch
+      description: User is not authorized to perform this action
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ApiError"
           examples:
-            jwtMismatch:
-              summary: JWT address mismatch
+            forbiddenGeneric:
+              summary: Forbidden - not authorized
               value:
                 code: "FORBIDDEN"
-                internalCode: "JWT_ADDRESS_MISMATCH"
-                message: "JWT wallet address does not match the address in the request. JWT address: 0xabc..., Request address: 0xdef..."
+                internalCode: "FORBIDDEN_GENERIC"
+                message: "User is not authorized to perform this action"
                 requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
                 retryAfterSeconds: null
 
