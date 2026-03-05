@@ -39,7 +39,7 @@ paths:
     post:
       summary: Create a deposit
       description: |
-        Initiates a deposit transaction to move funds into an optimal DeFi protocol on Linea.<br><br>
+        Initiates a deposit transaction to move funds into an optimal DeFi protocol.<br><br>
         User owned **rebalancer contract** must be pre-approved to spend tokens. The address of this contract is returned by the `GET /v1/config/{walletAddress}` endpoint. This contract gets deployed during first deposit and its address is pre-computed using CREATE2.<br><br>
         Both **signature-based (gasless)** and **approval-based** approvals are supported.<br><br>
         Actual deposit transaction is executed by an operator on behalf of the user after validating the request and JWT token.
@@ -78,7 +78,7 @@ paths:
 
         ## Authentication & Security
 
-        - Requires JWT authentication via Bearer token in the Authorization header
+        - Requires JWT authentication via JWT token in the Authorization header
         - The JWT must contain the same wallet address as specified in the request body
 
         ## Processing Flow
@@ -98,6 +98,26 @@ paths:
         The tracking ID is valid for 5 minutes and can be used with the status endpoint 
         to check if the deposit was successful, failed, or is still processing.
 
+        ## Source of Funds — User's Own Wallet ERC20 Balance
+
+        Deposits move tokens **from the user's own wallet** (their personal ERC20 balance 
+        on-chain) into a DeFi protocol via the MetaLend rebalancer contract.
+
+        **The `chain` field must be the chain where the user currently holds the ERC20 token 
+        balance in their wallet.** For example, if the user has USDC on Ethereum, 
+        `chain` must be `"ETHEREUM"`. If they have USDC on Base, `chain` must be `"BASE"`.
+
+        Before calling this endpoint:
+        1. Check the user's ERC20 balance: `token.balanceOf(userWalletAddress)` on the 
+          target chain — this is what they are depositing from.
+        2. For **approval-based** deposits: call `token.approve(rebalancerAddress, amount)` 
+          on the same chain before calling this endpoint.
+        3. For **signature-based** deposits (USDC/MUSD only): sign the `ReceiveWithAuthorization` 
+          permit off-chain — no on-chain approval transaction needed.
+
+        The rebalancer contract address to approve is returned by 
+        `GET /v1/config/{walletAddress}` in the `rebalancerAddress` field.
+
         ## Notes
         - Smart contract wallets that do not comply with standard signature length are currently not supported
         - For signature-based deposits, ensure timestamps are within valid range
@@ -114,8 +134,8 @@ paths:
             schema:
               $ref: "#/components/schemas/DepositRequest"
             examples:
-              signatureBased:
-                summary: Signature-based deposit (USDC/MUSD)
+              signatureBasedUsdcLinea:
+                summary: Signature-based deposit — USDC on Linea
                 value:
                   chain: "LINEA"
                   token: "USDC"
@@ -127,13 +147,40 @@ paths:
                   signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
                   tokenName: "USD Coin"
                   tokenVersion: "2"
-              approvalBased:
-                summary: Approval-based deposit (USDT, USDC, MUSD)
+              signatureBasedUsdcEth:
+                summary: Signature-based deposit — USDC on Ethereum
                 value:
-                  chain: "LINEA"
+                  chain: "ETHEREUM"
+                  token: "USDC"
+                  walletAddress: "0x1234567890123456789012345678901234567890"
+                  amount: "5000000"
+                  validAfter: "1700000000"
+                  validBefore: "1700000100"
+                  nonce: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+                  signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+                  tokenName: "USD Coin"
+                  tokenVersion: "2"
+              approvalBasedUsdtEthereum:
+                summary: Approval-based deposit — USDT on Ethereum
+                value:
+                  chain: "ETHEREUM"
                   token: "USDT"
                   walletAddress: "0x1234567890123456789012345678901234567890"
                   amount: "1000000"
+              approvalBasedUsdcBase:
+                summary: Approval-based deposit — USDC on Base
+                value:
+                  chain: "BASE"
+                  token: "USDC"
+                  walletAddress: "0x1234567890123456789012345678901234567890"
+                  amount: "2000000"
+              approvalBasedUsdcArbitrum:
+                summary: Approval-based deposit — USDC on Arbitrum
+                value:
+                  chain: "ARBITRUM"
+                  token: "USDC"
+                  walletAddress: "0x1234567890123456789012345678901234567890"
+                  amount: "3000000"
       responses:
         "201":
           description: Deposit initiated successfully
@@ -276,12 +323,47 @@ paths:
   /v1/withdrawals:
     post:
       summary: Create a withdrawal
-      description: Initiates a withdrawal transaction from DeFi protocols. <br><br>
-        Withdrawal must be signed as per **EIP-712 Typed structured data hashing and signing**. The signature must be created by wallet.<br><br>
-        Signature relevant information is retrieved by `/v1/balances/{walletAddress}` endpoint in the `withdrawRequest` field. EIP 712 domain parameters and types are provided for convenience. The `value` field contains the `token` (address) and `poolContract` (address) that must match the withdrawal request, while `amount` and `deadline` must be supplied by the user.<br><br>
-        `Deadline` must be a unix timestamp no more than 1 minute in the future which is the maximum amount of time the server waits for transaction confirmation.<br><br>
-        `Amount` must be at least 0.1 (stablecoin) of the token to cover on-behalf transaction gas fees and no more than the available balance in the specified pool. This value is specified in raw units (e.g., 6 decimals for USDC). Token decimals are included in the `token` object of `/v1/balances/{walletAddress}` endpoint for reference.<br><br>
+      description: |
+
+        ## Source of Funds — Rebalancer Contract Pool Balance
+
+        Withdrawals move tokens **from a pool held by the user's rebalancer contract**
+        back to the user's wallet. The funds are NOT in the user's wallet — they are
+        already inside the DeFi protocol (Aave, Morpho, or Euler) deposited by the
+        rebalancer.
+
+        **The `chain`, `token`, `poolContract`, and available `amount` must all be
+        derived from `GET /v1/balances/{walletAddress}`** — do not guess or hardcode
+        these values.
+
+        ## How to build a withdrawal request from the balances response
+
+        1. Call `GET /v1/balances/{walletAddress}` to get the rebalancer's holdings.
+        2. Navigate to: `perToken[n].perChain[m].perProtocol[p].perPool[q]`
+        3. From the pool object:
+           - `chain` field → use as `chain` in the withdrawal request
+           - `poolAddress` field → use as `poolContract` in the withdrawal request
+           - `balanceRaw` field → maximum withdrawable amount (raw units)
+           - `withdrawRequest` field → pre-filled EIP-712 domain, types, and value for signing
+        4. The `withdrawRequest.value` contains `token` (token contract address) and
+           `poolContract` (pool address) — use these as the signing value.
+        5. Supply `amount` (≤ `balanceRaw`, ≥ minimum) and `deadline` (unix timestamp,
+           max 1 minute in future).
+        6. Sign the EIP-712 typed data using the domain/types/value from `withdrawRequest`.
+        7. Submit this endpoint with all fields.
+
+        Initiates a withdrawal transaction from DeFi protocols.
+
+        Withdrawal must be signed as per **EIP-712 Typed structured data hashing and signing**. The signature must be created by wallet.
+
+        Signature relevant information is retrieved by `/v1/balances/{walletAddress}` endpoint in the `withdrawRequest` field. EIP 712 domain parameters and types are provided for convenience. The `value` field contains the `token` (address) and `poolContract` (address) that must match the withdrawal request, while `amount` and `deadline` must be supplied by the user.
+
+        `Deadline` must be a unix timestamp no more than 1 minute in the future which is the maximum amount of time the server waits for transaction confirmation.
+
+        `Amount` must be at least 0.1 (stablecoin) of the token to cover on-behalf transaction gas fees and no more than the available balance in the specified pool. This value is specified in raw units (e.g., 6 decimals for USDC). Token decimals are included in the `token` object of `/v1/balances/{walletAddress}` endpoint for reference.
+
         `Signature` must be of length 132 (0x + 130 characters) and signed by the wallet address associated with the **JWT token**.
+        
       operationId: createWithdrawal
       tags:
         - Withdrawals
@@ -294,14 +376,47 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/WithdrawalRequest"
-            example:
-              chain: "LINEA"
-              token: "USDC"
-              walletAddress: "0x1234567890123456789012345678901234567890"
-              amount: "500000"
-              deadline: "1700000000"
-              signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
-              poolContract: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+            examples:
+              withdrawUsdcLinea:
+                summary: Withdraw USDC from Aave on Linea
+                value:
+                  chain: "LINEA"
+                  token: "USDC"
+                  walletAddress: "0x1234567890123456789012345678901234567890"
+                  amount: "500000"
+                  deadline: "1700000060"
+                  signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+                  poolContract: "0xc47b8C00b0f69a36fa203Ffeac0334874574a8Ac"
+              withdrawUsdcEthereum:
+                summary: Withdraw USDC from Morpho on Ethereum
+                value:
+                  chain: "ETHEREUM"
+                  token: "USDC"
+                  walletAddress: "0x1234567890123456789012345678901234567890"
+                  amount: "10000000"
+                  deadline: "1700000060"
+                  signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+                  poolContract: "0xdd0f28e19c1780eb6396170735d45153d261490d"
+              withdrawUsdcBase:
+                summary: Withdraw USDC from Morpho on Base
+                value:
+                  chain: "BASE"
+                  token: "USDC"
+                  walletAddress: "0x1234567890123456789012345678901234567890"
+                  amount: "5000000"
+                  deadline: "1700000060"
+                  signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+                  poolContract: "0xc1256ae5ff1cf2719d4937adb3bbccab2e00a2ca"
+              withdrawUsdtEthereum:
+                summary: Withdraw USDT from Morpho on Ethereum
+                value:
+                  chain: "ETHEREUM"
+                  token: "USDT"
+                  walletAddress: "0x1234567890123456789012345678901234567890"
+                  amount: "8000000"
+                  deadline: "1700000060"
+                  signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
+                  poolContract: "0xbEef047a543E45807105E51A8BBEFCc5950fcfBa"
       responses:
         "201":
           description: Withdrawal initiated successfully
@@ -755,6 +870,16 @@ paths:
 
         **APY Information**: The APY data includes native lending rates, reward provider APYs (e.g., MERKLE, BREVIS), and total combined APY. All APY values are formatted to 2 decimal places and represent 7-day average market rates adjusted by fees.<br><br>
 
+        **Aave pool address collision example**: On Ethereum, the following pools 
+        all share `poolAddress: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"`:
+        - Aave V3 USDC (underlyingToken.symbol: "USDC")
+        - Aave V3 USDT (underlyingToken.symbol: "USDT")  
+        - Aave V3 RLUSD (underlyingToken.symbol: "RLUSD")
+        - Aave V3 MUSD (underlyingToken.symbol: "MUSD")
+        
+        When rendering a token-specific pool list, filter by `underlyingToken.symbol`, 
+        not by `poolAddress`.
+
         This endpoint requires an API key and can be used to discover available investment opportunities before configuring a rebalancer or making deposits.
       operationId: getPools
       tags:
@@ -788,6 +913,22 @@ paths:
         - Net earnings in USD (calculated as current balance minus net deposits/withdrawals)
         - Aggregate APY (weighted average across all protocols)
         - Per-chain breakdown with per-protocol and per-pool details<br><br>
+
+        **Spending / Card Balance (USDC only)**: For users with the MetaLend card 
+          feature active in their configuration, the total rebalancer balance consists 
+          of **two parts**:
+
+        - **Regular rebalancing balance** — funds held across DeFi pools on all chains, 
+          shown in `perToken[n].perChain[m].perProtocol[p].perPool[q]`.
+        - **Card balance** — funds reserved on Linea for card spending, shown in 
+          `perToken[n].spendingInfo`. This is USDC only and has two sub-components:
+          - Liquid USDC held in the rebalancer contract on Linea (`lineaUsdcBalance`)
+          - USDC deposited in Aave V3 on Linea, earning yield while available for 
+            card spending (`lineaAaveUsdcBalance`)
+
+        `spendingInfo` is `null` when the card feature is not active for the user. 
+          When displaying total balance to the user, include both the pool balances 
+          AND `spendingInfo` amounts — they are additive parts of the same rebalancer.
 
         **Withdraw Request**: Each pool balance includes optional `withdrawRequest` containing EIP-712 domain parameters, type definitions, and value structure for creating withdrawal signatures. The `value` field includes `token` and `poolContract` addresses, while `amount` and `deadline` must be supplied by the user when creating a withdrawal via `/v1/withdrawals` endpoint.<br><br>
 
@@ -859,7 +1000,32 @@ paths:
     get:
       summary: Get rewards
       description: |
-        Retrieves aggregated rewards data for the specified wallet address across supported reward sources.
+        Retrieves aggregated rewards data for the specified wallet address across 
+        supported reward sources (currently Merkle-based rewards).
+
+        **How to claim rewards — the `claimTransaction` is pre-built, just send it.**
+
+        Each `RewardItem` with claimable rewards includes a non-null `claimTransaction` 
+        field. The backend has already constructed the full ABI-encoded calldata for the 
+        `claimRewards(address,address[],uint256[],bytes32[][])` function — including the 
+        distributor address, token addresses, amounts, and merkle proofs.
+
+        To execute the claim, send a transaction from the user's wallet with exactly 
+        these values:
+        - `to`: `claimTransaction.to` — the rewards distributor contract address
+        - `data`: `claimTransaction.calldata` — fully encoded, ready to submit as-is
+        - `chainId`: `claimTransaction.chainId` — the chain to send it on
+
+        **You do NOT need to encode anything yourself.** Do not use `params`, `abi`, or 
+        `method` to construct the calldata — those are informational only. Use `calldata` 
+        directly as the transaction `data` field.
+
+        Example (viem):
+        await walletClient.sendTransaction({
+          to: claimTransaction.to,
+          data: claimTransaction.calldata,
+          chainId: claimTransaction.chainId,
+        })
       operationId: getRewards
       tags:
         - Rewards
@@ -1124,11 +1290,12 @@ components:
       name: X-API-Key
       description: API key required for all endpoints.
     JwtAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: Internal MetaLend JWT issued by `/v1/auth/challenge/verify`. Required for deposit, withdrawal, and config update endpoints.
-
+      type: apiKey
+      in: header
+      name: Authorization
+      description: >
+        JWT issued by POST /v1/auth/verify. Pass the raw JWT string directly as the
+        header value WITHOUT any "Bearer" prefix. Example: Authorization: eyJhbGci...
   schemas:
     GetChallengeRequest:
       type: object
@@ -1219,9 +1386,10 @@ components:
       properties:
         chain:
           type: string
-          enum: [LINEA]
-          default: LINEA
-          description: Blockchain network
+          enum: [ETHEREUM, BASE, POLYGON, ARBITRUM, OPTIMISM, AVALANCHE, LINEA]
+          description: >
+            The blockchain network where user want to proceed with deposit, this is based on config of the user.
+            Must match the chain where the user's wallet holds the token. Use standard ERC20 balanceOf(userWalletAddress) on this chain to verify the balance before depositing.
         token:
           type: string
           enum: [USDC, MUSD, USDT, RLUSD]
@@ -1351,9 +1519,14 @@ components:
       properties:
         chain:
           type: string
-          enum: [LINEA]
-          default: LINEA
-          description: Blockchain network
+          enum: [ETHEREUM, BASE, POLYGON, ARBITRUM, OPTIMISM, AVALANCHE, LINEA]
+          description: >
+              The blockchain network where the user's funds are located. Must match the chain returned in GET /v1/balances/{walletAddress}.
+              The chain where the rebalancer holds funds in the specified pool.
+              Must match the `chain` field of the pool from 
+              GET /v1/balances/{walletAddress} perToken.perChain.perProtocol.perPool.
+              Do NOT use the user's wallet chain — this is the chain the rebalancer 
+              deposited into, which may be different.
         token:
           type: string
           enum: [USDC, MUSD, USDT, RLUSD]
@@ -1446,7 +1619,7 @@ components:
           items:
             type: string
             pattern: "^0x[a-fA-F0-9]{40}$"
-          description: Pool contract addresses (must be checksummed per EIP-55) - must match length and index values must be relevant to domainIds and protocolIds
+          description: Pool contract addresses (must be checksummed per EIP-55) - must match length and index values must be relevant to domainIds and protocolIds Each pool address must be unique within this configuration. The same pool cannot be included more than once.
         signature:
           type: string
           pattern: "^0x[a-fA-F0-9]{130}$"
@@ -1652,6 +1825,19 @@ components:
             $ref: "#/components/schemas/Pool"
 
     Pool:
+      description: >
+        **Important: `poolAddress` is NOT globally unique across tokens.**
+        For Aave V3, the same `poolAddress` (the Aave lending pool contract) is shared 
+        across all tokens on a given chain. For example, Aave V3 USDC, USDT, and RLUSD 
+        on Ethereum all have the same `poolAddress`.
+        
+        A pool is uniquely identified by the combination of THREE fields together:
+          - `poolAddress`
+          - `chain`
+          - `underlyingToken.symbol`
+        
+        When filtering pools by token (e.g. "show only USDC pools"), ALWAYS filter on 
+        `underlyingToken.symbol`. Never filter on `poolAddress` alone for Aave pools.
       type: object
       required:
         - protocolName
@@ -1686,7 +1872,11 @@ components:
           description: Protocol website URL
         poolAddress:
           type: string
-          description: Pool contract address
+          description: Pool contract address. The pool contract address. For Aave V3 pools, this is the Aave lending pool 
+            contract address, which is the SAME for all tokens (USDC, USDT, RLUSD, MUSD) 
+            on a given chain. Do NOT use this field alone as a unique pool identifier — 
+            it must always be combined with `chain` and `underlyingToken.symbol`.
+            For Morpho and Euler, this address IS unique per pool
           example: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
         poolName:
           type: string
@@ -1887,6 +2077,13 @@ components:
             $ref: "#/components/schemas/ChainBalance"
         spendingInfo:
           $ref: "#/components/schemas/SpendingInfo"
+          nullable: true
+          description: >
+            Card spending balance breakdown for USDC on Linea. Only present when the 
+            user has the MetaLend card feature active in their configuration. 
+            This balance is SEPARATE from the pool balances in `perChain` but is part 
+            of the user's total rebalancer balance. Display alongside pool balances 
+            when showing the user their total holdings.
         bridgeBalances:
           type: array
           nullable: true
@@ -1987,6 +2184,11 @@ components:
           $ref: "#/components/schemas/WithdrawalRequestData"
 
     SpendingInfo:
+      description: >
+        Breakdown of USDC funds reserved on Linea for MetaLend card spending.
+        Only returned when the card feature is active in the user's config.
+        The total rebalancer balance = regular pool balances (perChain) + 
+        lineaUsdcBalance + lineaAaveUsdcBalance from this object.
       type: object
       required:
         - lineaUsdcBalanceRaw
@@ -1997,14 +2199,27 @@ components:
       properties:
         lineaUsdcBalanceRaw:
           type: string
+          description: >
+            Liquid USDC held directly in the rebalancer contract on Linea (raw units, 
+            6 decimals). This is uninvested and immediately available for card spending.
         lineaUsdcBalanceFormatted:
           type: string
+          description: Human-readable liquid USDC balance on Linea (formatted to 2 decimals).
         lineaAaveUsdcBalanceRaw:
           type: string
+          description: >
+            USDC deposited in Aave V3 on Linea (raw units, 6 decimals). This is earning 
+            yield and also counts toward the card spending balance. Add to 
+            lineaUsdcBalanceRaw to get the full card balance.
         lineaAaveUsdcBalanceFormatted:
           type: string
+          description: >
+            Human-readable USDC balance in Aave V3 on Linea (formatted to 2 decimals).
         lineaAaveApy:
           type: string
+          description: >
+            Current APY of the Aave V3 USDC pool on Linea where card funds earn yield 
+            (formatted to 2 decimals, e.g. "2.01").
 
     WithdrawalRequestData:
       type: object
@@ -2216,6 +2431,10 @@ components:
           type: string
         availableRaw:
           type: string
+          description: >
+            Available (unclaimed) reward amount in raw token units. 
+            When this is "0", claimTransaction will be null and no claim button 
+            should be shown. When > "0", claimTransaction is non-null and ready to execute.
         availableFormatted:
           type: string
         availableUsd:
@@ -2233,6 +2452,11 @@ components:
         claimTransaction:
           $ref: "#/components/schemas/ClaimTransaction"
           nullable: true
+          description: >
+            Pre-built transaction to claim this reward item on-chain. Non-null when 
+            `availableRaw` > "0". To claim: send a transaction with 
+            `to = claimTransaction.to`, `data = claimTransaction.calldata`, 
+            `chainId = claimTransaction.chainId`. No additional encoding needed.
 
     RewardChainInfo:
       type: object
@@ -2286,18 +2510,40 @@ components:
       properties:
         to:
           type: string
+          description: >
+            The rewards distributor contract address. Use as the `to` field of the transaction.
         chainId:
           type: integer
+          description: >
+            The EVM chain ID to send the transaction on. Ensure the wallet is on this chain 
+            before calling sendTransaction.
         chain:
           type: string
+          description: Human-readable chain name (informational, e.g. "ethereum", "linea").
         method:
           type: string
+          description: >
+            The contract function signature — informational only. 
+            The value is "claimRewards(address,address[],uint256[],bytes32[][])".
+            Do NOT use this to build the transaction — use `calldata` directly.
         params:
           $ref: "#/components/schemas/ClaimTransactionParams"
+          description: >
+            The decoded parameters passed to claimRewards — informational only.
+            Do NOT use these to re-encode the calldata — use `calldata` directly.
         abi:
           type: string
+          description: >
+            The ABI fragment for the claimRewards function — informational only.
+            Do NOT use this to re-encode the calldata — use `calldata` directly.
         calldata:
           type: string
+          description: >
+            Fully ABI-encoded transaction data, ready to submit as-is.
+            Use this as the `data` field of sendTransaction. 
+            This includes the function selector and all encoded arguments 
+            (distributor, token addresses, amounts, merkle proofs).
+            Example: walletClient.sendTransaction({ to, data: calldata, chainId })
 
     ClaimTransactionParams:
       type: object
