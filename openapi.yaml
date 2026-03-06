@@ -352,6 +352,20 @@ paths:
         6. Sign the EIP-712 typed data using the domain/types/value from `withdrawRequest`.
         7. Submit this endpoint with all fields.
 
+        ## Field-by-field mapping from balances response to WithdrawalRequest
+
+        | WithdrawalRequest field | Source                                                                 |
+        |-------------------------|------------------------------------------------------------------------|
+        | `chain`                 | `PoolBalance.chain` (string, e.g. "BASE")                            |
+        | `token`                 | Parent token key/symbol (e.g. "USDC") — NOT `withdrawRequest.value.token` which is a contract address |
+        | `walletAddress`         | The user's wallet address (same as used in JWT)                        |
+        | `poolContract`          | `PoolBalance.poolAddress`                                              |
+        | `amount`                | User-chosen raw amount, ≤ `PoolBalance.balanceRaw`, ≥ 100000 for USDC |
+        | `deadline`              | User-chosen unix timestamp, max 60 seconds from now                    |
+        | `signature`             | EIP-712 sign of `withdrawRequest.domain` + `withdrawRequest.types` + `{token: withdrawRequest.value.token, poolContract: withdrawRequest.value.poolContract, amount: <your_amount>, deadline: <your_deadline>}` |
+
+        Initiates a withdrawal transaction from DeFi protocols.
+
         Initiates a withdrawal transaction from DeFi protocols.
 
         Withdrawal must be signed as per **EIP-712 Typed structured data hashing and signing**. The signature must be created by wallet.
@@ -581,9 +595,9 @@ paths:
         - `6` = BASE
         - `7` = POLYGON
         - `3` = ARBITRUM
-        - `1` = AVAX
+        - `1` = AVALANCHE
         - `2` = OPTIMISM
-        - `0` = ETH
+        - `0` = ETHEREUM
 
         **Protocol IDs**: Maps to supported protocols:
         - `0` = Aave
@@ -633,6 +647,9 @@ paths:
                 - "0x2222222222222222222222222222222222222222"
               signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
               includeRewardsApy: true
+              requiredTvl: "500000"
+              requiredLiquidityMultiplier: "1.5"
+              spendingCapRaw: "0"
       responses:
         "200":
           description: Configuration updated successfully
@@ -1133,7 +1150,7 @@ paths:
               siweDomain: "app.metalend.tech"
               siweUri: "https://app.metalend.tech"
               siweStatement: "Sign in with Ethereum to MetaLend"
-              chain: "ETH"
+              chain: "ETHEREUM"
       responses:
         "200":
           description: Challenge issued successfully
@@ -1324,16 +1341,16 @@ components:
           example: "Sign in with Ethereum to MetaLend"
         chain:
           type: string
-          description: The blockchain network. Defaults to "ETH" if omitted.
+          description: The blockchain network. Defaults to "ETHEREUM" if omitted.
           enum:
-            - ETH
+            - ETHEREUM
             - BASE
             - POLYGON
             - ARBITRUM
             - OPTIMISM
-            - AVAX
+            - AVALANCHE
             - LINEA
-          example: "ETH"
+          example: "ETHEREUM"
     
     GetChallengeResponse:
       type: object
@@ -1361,7 +1378,7 @@ components:
           example: "0x9c1efc293e476948580195863a66203816a3d437a04a92df95c1be979010031c35dbd856110eb161aa59f72cbfe49ff3a64fda3bdb094c2c321edfb13c8215161b"
         chain:
           type: string
-          enum: [BASE, POLYGON, ARBITRUM, OPTIMISM, AVAX, LINEA, ETH]
+          enum: [BASE, POLYGON, ARBITRUM, OPTIMISM, AVALANCHE, LINEA, ETHEREUM]
           nullable: true
           default: null
           description: When signing with a Smart Contract Wallet, specify the chain kind. Currently only Coinbase Smart Wallet is supported. This provides signature verification context
@@ -1388,8 +1405,20 @@ components:
           type: string
           enum: [ETHEREUM, BASE, POLYGON, ARBITRUM, OPTIMISM, AVALANCHE, LINEA]
           description: >
-            The blockchain network where user want to proceed with deposit, this is based on config of the user.
-            Must match the chain where the user's wallet holds the token. Use standard ERC20 balanceOf(userWalletAddress) on this chain to verify the balance before depositing.
+            The blockchain network for this deposit. IMPORTANT: Do NOT derive this from
+            wagmi's chain.name or chain.network — those use different naming conventions.
+            Always use PoolBalance.chain from GET /v1/balances which is already in the
+            correct API format. For chain switching before the on-chain approve() call,
+            use PoolBalance.chainId (integer EVM chain ID) with switchChain({ chainId }).
+
+            If you must map from wagmi/viem chainId to this field, use:
+            - chainId 1       → "ETHEREUM"
+            - chainId 8453    → "BASE"
+            - chainId 137     → "POLYGON"
+            - chainId 42161   → "ARBITRUM"
+            - chainId 10      → "OPTIMISM"
+            - chainId 43114   → "AVALANCHE"
+            - chainId 59144   → "LINEA"
         token:
           type: string
           enum: [USDC, MUSD, USDT, RLUSD]
@@ -1527,10 +1556,17 @@ components:
               GET /v1/balances/{walletAddress} perToken.perChain.perProtocol.perPool.
               Do NOT use the user's wallet chain — this is the chain the rebalancer 
               deposited into, which may be different.
+              This value must be taken directly from PoolBalance.chain — do NOT convert
+              from wagmi chain names. Use withdrawRequest.domain.chainId (integer) to
+              switch the wallet chain before signing.
         token:
           type: string
           enum: [USDC, MUSD, USDT, RLUSD]
-          description: Token symbol (uppercase)
+          description: >
+            Token symbol (uppercase). Use the symbol (e.g. "USDC"), NOT the contract address.
+            Do NOT use `withdrawRequest.value.token` here — that is the ERC-20 contract address
+            used only for EIP-712 signing. This field must be the human-readable symbol from
+            the parent token level of GET /v1/balances/{walletAddress}.
         walletAddress:
           type: string
           pattern: "^0x[a-fA-F0-9]{40}$"
@@ -1631,15 +1667,26 @@ components:
         requiredTvl:
           type: string
           default: "0"
-          description: Required TVL threshold (numeric string, parsed as decimal on the server; e.g. "0", "1.5")
+          description: >
+            *(Recommended)* Minimum TVL (in USD) a pool must have before the rebalancer will route
+            funds into it. It is recommended to set this to avoid routing funds into low-liquidity
+            pools. Pass `"0"` only to explicitly disable this filter.
+            Example: `"500000"` = $500k minimum TVL.
         requiredLiquidityMultiplier:
           type: string
           default: "0"
-          description: Required liquidity multiplier threshold (numeric string, parsed as decimal on the server; e.g. "0", "1.0")
+          description: >
+            *(Recommended)* Minimum ratio of pool liquidity to the user's position size. It is
+            recommended to set this as a safety guard against thin markets. Pass `"0"` only to
+            explicitly disable this filter.
+            Example: `"1.5"` = pool must hold at least 1.5× the user's position in available liquidity.
         spendingCapRaw:
           type: string
           default: "0"
-          description: Spending cap in raw token units (numeric string, parsed as integer on the server; e.g. "0", "1000000")
+          description: >
+            *(Optional)* Maximum amount in raw token units (unformatted integer) the rebalancer
+            is allowed to move in a single transaction. Pass `"0"` for no cap.
+            Example for USDC (6 decimals): `"1000000000"` = $1,000 cap.
 
     CreateOrUpdateConfigResponse:
       type: object
@@ -2155,6 +2202,7 @@ components:
         - apy
         - chain
         - chainId
+        - withdrawRequest
       properties:
         poolAddress:
           type: string
@@ -2222,6 +2270,11 @@ components:
             (formatted to 2 decimals, e.g. "2.01").
 
     WithdrawalRequestData:
+      description: >
+            Always present when this pool has a non-zero balance. Contains the pre-filled
+            EIP-712 domain, types, and partial value needed to sign a withdrawal. The
+            `value.amount` and `value.deadline` are returned as null — you MUST fill them
+            in with your chosen values before signing.
       type: object
       required:
         - domain
@@ -2296,11 +2349,17 @@ components:
         amount:
           type: string
           nullable: true
-          description: Withdrawal amount
+          description: >
+            The server always returns this as null. You MUST substitute your chosen withdrawal
+            amount here before signing. Use the same value you will send in the WithdrawalRequest
+            body. Must be ≤ PoolBalance.balanceRaw and ≥ minimum (e.g. 100000 for USDC = $0.10).
         deadline:
           type: string
           nullable: true
-          description: Withdrawal deadline (Unix epoch timestamp)
+          description: >
+            The server always returns this as null. You MUST substitute your chosen deadline
+            here before signing. Use the same value you will send in the WithdrawalRequest body.
+            Must be a unix timestamp no more than 60 seconds in the future.
           example: "1763558621"
 
     GetBridgeBalancesResponse:
