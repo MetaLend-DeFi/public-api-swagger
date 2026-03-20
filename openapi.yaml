@@ -577,7 +577,7 @@ paths:
 
   /v1/projects/settings/tokens:
     get:
-      summary: Get project token settings (API key)
+      summary: Get project token settings
       description: |
         Retrieves per-token project settings for the **project bound to your API key**. The key resolves to a single `projectId`.
 
@@ -600,38 +600,6 @@ paths:
                 $ref: "#/components/schemas/ProjectSettingsResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedNoHeader"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "429":
-          $ref: "#/components/responses/RateLimitExceeded"
-        "500":
-          $ref: "#/components/responses/InternalError"
-
-  /v1/projects/settings/tokens/jwt:
-    get:
-      summary: Get project token settings (JWT)
-      description: |
-        Same payload as `GET /v1/projects/settings/tokens`.
-
-        **Recommended**: Use Project Settings as a responsible user config settings. Use this project settings as a default for new users (without signed config). Treat overlapping configurations as a violation.      
-
-        **Authentication**: Requires a valid JWT token. The subject must have one of the following roles: `project_admin`, `project_developer`, or `project_viewer`. The JWT must include a `projectId`.
-        
-        **Rate limiting**: 1 request per 3 seconds per client IP (additional requests may receive HTTP 429).
-      operationId: getProjectSettingsJwt
-      tags:
-        - Project Settings
-      security:
-        - JwtAuth: []
-      responses:
-        "200":
-          description: Project token settings retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProjectSettingsResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedInvalidSignature"
         "403":
           $ref: "#/components/responses/Forbidden"
         "429":
