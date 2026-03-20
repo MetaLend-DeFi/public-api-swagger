@@ -117,23 +117,36 @@ Classify endpoints as:
 
 ---
 
-## CONFIGURATION UI RULE — POOLS VS USER CONFIG
+## CONFIGURATION UI RULE — PROJECT SETTINGS VS USER CONFIG
 
 The UI must clearly distinguish between:
 
 1. **All available pools** (global catalog)
-2. **User selected pools** (user configuration)
+2. **Project Settings** (recommended default configuration for the project bound to API key)
+3. **User Config** (user-signed token configuration)
+4. **Effective User Config** (final user view after applying Project Settings + User Config rules)
 
 Source of truth:
 
 • `GET /v1/pools` → returns **ALL available pools** across chains and protocols  
+• `GET /v1/projects/settings/tokens` → returns **Project Settings** for the API key's project
 • `GET /v1/config/{walletAddress}` → returns **the user's current configuration**
 
 The UI must:
 
 • load all pools from `/v1/pools`
-• load the user's configuration from `/v1/config/{walletAddress}`
+• load Project Settings from `/v1/projects/settings/tokens`
+• load User Config from `/v1/config/{walletAddress}`
 • visually indicate which pools are **selected vs not selected**
+
+Rules for config relation:
+
+• **Project Settings** are defined by the developer as recommended defaults per project (API key scope).
+• For a new user without signed token config (`hasSignedConfig = false`), treat Project Settings as the default displayed config.
+• For an existing user with signed token config (`hasSignedConfig = true`), always show the user's signed settings and compute **Effective User Config** against Project Settings.
+• If overlapping user-signed configuration violates current Project Settings (for example pools removed by developer, or stricter safety filters like TVL/liquidity), this should be treated as a **Project Settings violation** in UI.
+• The UI should at minimum display a clear Project Settings difference/violation diff so the user can understand what changed.
+• Signed user configuration must not be silently overwritten by updated Project Settings.
 
 Users must be able to:
 
