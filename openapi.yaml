@@ -2300,11 +2300,11 @@ components:
           example: "USDC"
         enabled:
           type: boolean
-          description: Whether rebalancing is enabled for this token.
+          description: Whether this token should be presented as supported in the project UI.
         metamaskCardEnabled:
           type: boolean
           nullable: true
-          description: MetaMask / card feature toggle - only applicable for USDC.
+          description: Whether the MetaMask / card integration should be presented in project UI. Only applicable for USDC.
         protocolIds:
           type: array
           description: Protocol IDs (0=Aave, 1=Morpho, 2=Euler) - match index values of domainIds and poolAddresses
