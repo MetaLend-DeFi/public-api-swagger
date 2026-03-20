@@ -581,6 +581,8 @@ paths:
       description: |
         Retrieves per-token project settings for the **project bound to your API key**. The key resolves to a single `projectId`.
 
+        **Recommended**: Use Project Settings as a responsible user config settings. Use this project settings as a default for new users (without signed config). Treat overlapping configurations as a violation.      
+
         **Authentication**: Requires a valid API key. The API key must be associated with a project.
         
         **Rate limiting**: 1 request per 3 seconds per client IP (additional requests may receive HTTP 429).
@@ -610,6 +612,8 @@ paths:
       summary: Get project token settings (JWT)
       description: |
         Same payload as `GET /v1/projects/settings/tokens`.
+
+        **Recommended**: Use Project Settings as a responsible user config settings. Use this project settings as a default for new users (without signed config). Treat overlapping configurations as a violation.      
 
         **Authentication**: Requires a valid JWT token. The subject must have one of the following roles: `project_admin`, `project_developer`, or `project_viewer`. The JWT must include a `projectId`.
         
