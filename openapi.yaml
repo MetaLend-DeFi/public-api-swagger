@@ -679,9 +679,9 @@ paths:
                 - "0x2222222222222222222222222222222222222222"
               signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
               includeRewardsApy: true
-              requiredTvl: 500000
+              requiredTvl: 5000000
               requiredLiquidityMultiplier: 10
-              spendingCapRaw: "0"
+              spendingCapRaw: 0
       responses:
         "200":
           description: Configuration updated successfully
@@ -805,8 +805,8 @@ paths:
                     totalGasFee: "0.00"
                     totalDeposits: "0.00"
                     totalWithdrawals: "0.00"
-                    requiredTvl: 0
-                    requiredLiquidityMultiplier: 0
+                    requiredTvl: "0"
+                    requiredLiquidityMultiplier: "0"
                     spendingCapRaw: null
                     spendingCapFormatted: null
                     hasSignedConfig: true
@@ -820,8 +820,8 @@ paths:
                     totalGasFee: "0.00"
                     totalDeposits: "0.00"
                     totalWithdrawals: "0.00"
-                    requiredTvl: 0
-                    requiredLiquidityMultiplier: 0
+                    requiredTvl: "0"
+                    requiredLiquidityMultiplier: "0"
                     spendingCapRaw: null
                     spendingCapFormatted: null
                     hasSignedConfig: false
@@ -836,8 +836,8 @@ paths:
                     totalGasFee: "0.00"
                     totalDeposits: "0.00"
                     totalWithdrawals: "0.00"
-                    requiredTvl: 0
-                    requiredLiquidityMultiplier: 0
+                    requiredTvl: "0"
+                    requiredLiquidityMultiplier: "0"
                     spendingCapRaw: null
                     spendingCapFormatted: null
                     hasSignedConfig: false
@@ -1697,15 +1697,15 @@ components:
           default: true
           description: Include rewards in APY calculations
         requiredTvl:
-          type: integer
+          type: number
           default: 0
           description: >
             *(Recommended)* Minimum TVL (in USD) a pool must have before the rebalancer will route
             funds into it. It is recommended to set this to avoid routing funds into low-liquidity
             pools. Pass `0` only to explicitly disable this filter.
-            Example: `500000` = $500k minimum TVL.
+            Example: `5000000` = $5M minimum TVL.
         requiredLiquidityMultiplier:
-          type: integer
+          type: number
           default: 0
           description: >
             *(Recommended)* Minimum ratio of pool liquidity to the user's position size. It is
@@ -1713,11 +1713,11 @@ components:
             explicitly disable this filter.
             Example: `10` = pool must hold at least 10× the user's position in available liquidity.
         spendingCapRaw:
-          type: string
-          default: "0"
+          type: integer
+          default: 0
           description: >
             *(Optional)* Maximum amount in raw token units (unformatted integer) the rebalancer
-            is allowed to move in a single transaction. Pass `"0"` for no cap.
+            is allowed to move in a single transaction. Pass `0` for no cap.
             Example for USDC (6 decimals): `"1000000000"` = $1,000 cap.
 
     CreateOrUpdateConfigResponse:
@@ -1836,19 +1836,19 @@ components:
           example: 7
           description: Rebalance frequency in days
         requiredTvl:
-          type: integer
+          type: string
           description: >
             *(Recommended)* Minimum TVL (in USD) a pool must have before the rebalancer will route
             funds into it. It is recommended to set this to avoid routing funds into low-liquidity
-            pools. Pass `0` only to explicitly disable this filter.
-            Example: `500000` = $500k minimum TVL.
+            pools. Pass `"0"` only to explicitly disable this filter.
+            Example: `"5000000"` = $5M minimum TVL.
         requiredLiquidityMultiplier:
-          type: integer
+          type: string
           description: > 
             *(Recommended)* Minimum ratio of pool liquidity to the user's position size. It is
-            recommended to set this as a safety guard against thin markets. Pass `0` only to
+            recommended to set this as a safety guard against thin markets. Pass `"0"` only to
             explicitly disable this filter.
-            Example: `10` = pool must hold at least 10× the user's position in available liquidity.
+            Example: `"10"` = pool must hold at least 10× the user's position in available liquidity.
         spendingCapRaw:
           type: string
           nullable: true
@@ -2332,18 +2332,18 @@ components:
           type: boolean
           description: Whether the client may change `domainIds`.
         requiredTvl:
-          type: integer
+          type: number
           description: >
             *(Recommended)* Minimum TVL (in USD) a pool must have before the rebalancer will route
             funds into it. It is recommended to set this to avoid routing funds into low-liquidity
             pools. Pass `0` only to explicitly disable this filter.
-            Example: `500000` = $500k minimum TVL.
-          example: 500000
+            Example: `5000000` = $5M minimum TVL.
+          example: 5000000
         requiredTvlUserModifiable:
           type: boolean
           description: Whether the client may change `requiredTvl`.
         requiredLiquidityMultiplier:
-          type: integer
+          type: number
           description: >
             *(Recommended)* Minimum ratio of pool liquidity to the user's position size. It is
             recommended to set this as a safety guard against thin markets. Pass `0` only to
@@ -2402,7 +2402,7 @@ components:
               poolsUserModifiable: true
               domainIds: [6, 3, 3]
               domainsUserModifiable: true
-              requiredTvl: 500000
+              requiredTvl: 5000000
               requiredTvlUserModifiable: true
               requiredLiquidityMultiplier: 10
               requiredLiquidityMultiplierUserModifiable: true
