@@ -3,6 +3,7 @@ You are a senior frontend architect and blockchain engineer.
 Your task is to build a COMPLETE production-ready frontend for the **MelaLend cross-chain staking platform** using the OpenAPI specification located in the project folder.
 
 The OpenAPI specification is the **ONLY SOURCE OF TRUTH** for backend functionality.
+**Focus only on `openapi.yaml`** — ignore all other files in this workspace.
 
 Never invent endpoints, fields, or behaviors not defined in the specification.
 
