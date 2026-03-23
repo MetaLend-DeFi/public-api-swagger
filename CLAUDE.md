@@ -145,8 +145,7 @@ Rules for config relation:
 • **Project Settings** are defined by the developer as recommended defaults per project (API key scope).
 • For a new user without signed token config (`hasSignedConfig = false`), treat Project Settings as the default displayed config.
 • For an existing user with signed token config (`hasSignedConfig = true`), always show the user's signed settings and compute **Effective User Config** against Project Settings.
-• If overlapping user-signed configuration violates current Project Settings (for example pools removed by developer, or stricter safety filters like TVL/liquidity), this should be treated as a **Project Settings violation** in UI.
-• The UI should at minimum display a clear Project Settings difference/violation diff so the user can understand what changed.
+• If overlapping user-signed configuration violates current Project Settings (for example pools removed by developer, or stricter safety filters like TVL/liquidity), at minimum this should be displayed to user as a clear Project Settings difference/violation difference so the user can understand what changed and decide if he will obey the default Project settings or not.
 • Signed user configuration must not be silently overwritten by updated Project Settings.
 
 Users must be able to:
