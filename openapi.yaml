@@ -681,7 +681,7 @@ paths:
               includeRewardsApy: true
               requiredTvl: 5000000
               requiredLiquidityMultiplier: 10
-              spendingCapRaw: 0
+              spendingCapRaw: "0"
       responses:
         "200":
           description: Configuration updated successfully
@@ -1713,11 +1713,11 @@ components:
             explicitly disable this filter.
             Example: `10` = pool must hold at least 10× the user's position in available liquidity.
         spendingCapRaw:
-          type: integer
-          default: 0
+          type: string
+          default: "0"
           description: >
             *(Optional)* Maximum amount in raw token units (unformatted integer) the rebalancer
-            is allowed to move in a single transaction. Pass `0` for no cap.
+            is allowed to move in a single transaction. Pass `"0"` for no cap.
             Example for USDC (6 decimals): `"1000000000"` = $1,000 cap.
 
     CreateOrUpdateConfigResponse:
