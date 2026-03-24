@@ -17,7 +17,7 @@ info:
     </ul>
     All endpoints require an <b>X-API-Key</b>. <b>JWT authentication</b> is required on <b>deposit, withdrawal, and config update</b> operations.
     
-    Request API key here: <a href="https://docs.google.com/forms/d/1dtVRld9UU_tFr0Okg9i-I9U0IuBMF1wzTc_LUUn2EA0" target="_blank" rel="noopener noreferrer">here</a>
+    <b>Request API key: <a href="https://docs.google.com/forms/d/1dtVRld9UU_tFr0Okg9i-I9U0IuBMF1wzTc_LUUn2EA0" target="_blank" rel="noopener noreferrer">here</a></b>
   contact:
     name: MetaLend API Support
     email: support@metalend.tech
