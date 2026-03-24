@@ -118,6 +118,14 @@ Classify endpoints as:
 
 ---
 
+## API KEY
+Valid API key is crucial for authentication.
+
+If missing API key is detected or there are 401 api responses, display banner with link where to request API key.  
+
+This link can also be found in `openapi.yaml`.
+
+
 ## CONFIGURATION UI RULE — PROJECT SETTINGS VS USER CONFIG
 
 The UI must clearly distinguish between:
@@ -221,6 +229,7 @@ Rules:
 
 Implement a centralized API layer including:
 
+• Api key `requested from link specified in openapi.yaml`
 • Base URL from environment variables
 • Typed fetch wrapper
 • Request interceptors
@@ -240,6 +249,7 @@ Define a configuration system including:
 
 Environment variables:
 
+VITE_API_KEY
 VITE_API_BASE_URL
 VITE_DEFAULT_CHAIN
 VITE_WALLETCONNECT_PROJECT_ID
@@ -382,6 +392,7 @@ All mutation endpoints:
 
 The application must include:
 
+• missing API key or 401 api response detection - display banner with link where to request API key
 • global React ErrorBoundary
 • centralized API error parser
 • toast notification system
