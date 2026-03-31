@@ -6,7 +6,8 @@ info:
     API for managing cross-protocol cross-chain DeFi rebalancing operations exposing:
     <ul>
       <li><b>Auth</b> – challenge/verify flow for JWT issuance.</li>
-      <li><b>Configurations</b> – register or update token-level user-rebalancer settings and fetch current wallet configs.</li>
+      <li><b>Project settings</b> – fetch current project settings.</li>
+      <li><b>User configuration</b> – register or update token-level user-rebalancer settings and fetch current wallet configs.</li>
       <li><b>Deposits</b> – create deposit intents, receive tracking IDs, and poll for completion.</li>
       <li><b>Withdrawals</b> – submit signed withdrawal requests and monitor status updates.</li>
       <li><b>Balances</b> – query wallet-level balances and withdraw details, as well as balances in bridge progress.</li>
@@ -15,8 +16,8 @@ info:
       <li><b>Transaction Costs</b> – current deposit/withdraw on-behalf transaction fees and minimum amounts by chain.</li>
     </ul>
     All endpoints require an <b>X-API-Key</b>. <b>JWT authentication</b> is required on <b>deposit, withdrawal, and config update</b> operations.
-    
-    Request API key here: <a href="https://docs.google.com/forms/d/1dtVRld9UU_tFr0Okg9i-I9U0IuBMF1wzTc_LUUn2EA0" target="_blank" rel="noopener noreferrer">here</a>
+
+    <b>Obtain API key by <a href="https://developer.metalend.tech/" target="_blank" rel="noopener noreferrer">creating a new project</a>.</b>
   contact:
     name: MetaLend API Support
     email: support@metalend.tech
@@ -574,6 +575,37 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /v1/projects/settings/tokens:
+    get:
+      summary: Get project token settings
+      description: |
+        Retrieves per-token project settings for the **project bound to your API key**. The key resolves to a single `projectId`.
+
+        **Recommended**: Use Project Settings as a responsible user config settings. Use this project settings as a default for new users (without signed config). Treat overlapping configurations as a violation.      
+
+        **Authentication**: Requires a valid API key. The API key must be associated with a project.
+        
+        **Rate limiting**: 1 request per 3 seconds per client IP (additional requests may receive HTTP 429).
+      operationId: getProjectSettings
+      tags:
+        - Project Settings
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Project token settings retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSettingsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /v1/config:
     put:
@@ -621,12 +653,12 @@ paths:
 
         The signature must be 132 characters long (0x + 130 hex characters) and must be signed by the wallet address in the `walletAddress` field.
 
-        **Include Rewards APY**: The optional `includeRewardsApy` boolean flag (default: `true`) determines whether reward  APYs should be included in APY calculations during rebalancing decisions.
+        **Include Rewards APY**: The optional `includeRewardsApy` boolean flag (default: `true`) determines whether reward APYs should be included in APY calculations during rebalancing decisions.
 
         **Response**: Returns `201 Created` if this is the first configuration for the wallet, or `200 OK` if updating an existing configuration. The response includes the deployed rebalancer contract address and the list of configured tokens.
       operationId: updateConfig
       tags:
-        - Config
+        - User Configuration
       security:
         - ApiKeyAuth: []
           JwtAuth: []
@@ -647,8 +679,8 @@ paths:
                 - "0x2222222222222222222222222222222222222222"
               signature: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef01"
               includeRewardsApy: true
-              requiredTvl: "500000"
-              requiredLiquidityMultiplier: "1.5"
+              requiredTvl: 5000000
+              requiredLiquidityMultiplier: 10
               spendingCapRaw: "0"
       responses:
         "200":
@@ -740,7 +772,7 @@ paths:
         **Note:** Requires a valid API key to query configurations.
       operationId: getConfig
       tags:
-        - Config
+        - User Configuration
       parameters:
         - name: walletAddress
           in: path
@@ -844,7 +876,7 @@ paths:
         This represents the default state of the configuration, which can be used as a reference or starting point for rebalancing operations. Use this to compare against user's existing configuration.
       operationId: getDefaultConfig
       tags:
-        - Config
+        - User Configuration
       parameters:
         - name: token
           in: path
@@ -1665,21 +1697,21 @@ components:
           default: true
           description: Include rewards in APY calculations
         requiredTvl:
-          type: string
-          default: "0"
+          type: number
+          default: 0
           description: >
             *(Recommended)* Minimum TVL (in USD) a pool must have before the rebalancer will route
             funds into it. It is recommended to set this to avoid routing funds into low-liquidity
-            pools. Pass `"0"` only to explicitly disable this filter.
-            Example: `"500000"` = $500k minimum TVL.
+            pools. Pass `0` only to explicitly disable this filter.
+            Example: `5000000` = $5M minimum TVL.
         requiredLiquidityMultiplier:
-          type: string
-          default: "0"
+          type: number
+          default: 0
           description: >
             *(Recommended)* Minimum ratio of pool liquidity to the user's position size. It is
-            recommended to set this as a safety guard against thin markets. Pass `"0"` only to
+            recommended to set this as a safety guard against thin markets. Pass `0` only to
             explicitly disable this filter.
-            Example: `"1.5"` = pool must hold at least 1.5× the user's position in available liquidity.
+            Example: `10` = pool must hold at least 10× the user's position in available liquidity.
         spendingCapRaw:
           type: string
           default: "0"
@@ -1805,10 +1837,18 @@ components:
           description: Rebalance frequency in days
         requiredTvl:
           type: string
-          description: Required TVL threshold
+          description: >
+            *(Recommended)* Minimum TVL (in USD) a pool must have before the rebalancer will route
+            funds into it. It is recommended to set this to avoid routing funds into low-liquidity
+            pools. Pass `"0"` only to explicitly disable this filter.
+            Example: `"5000000"` = $5M minimum TVL.
         requiredLiquidityMultiplier:
           type: string
-          description: Required liquidity multiplier threshold
+          description: > 
+            *(Recommended)* Minimum ratio of pool liquidity to the user's position size. It is
+            recommended to set this as a safety guard against thin markets. Pass `"0"` only to
+            explicitly disable this filter.
+            Example: `"10"` = pool must hold at least 10× the user's position in available liquidity.
         spendingCapRaw:
           type: string
           nullable: true
@@ -2230,6 +2270,146 @@ components:
           description: Chain ID
         withdrawRequest:
           $ref: "#/components/schemas/WithdrawalRequestData"
+
+    ProjectSettingsToken:
+      description: >
+        Project settings for one supported token. Keys in the parent
+        `settings` map are supported token symbols (`USDC`, `MUSD`, `USDT`, `RLUSD`).
+      type: object
+      required:
+        - token
+        - enabled
+        - protocolIds
+        - protocolsUserModifiable
+        - poolAddresses
+        - poolsUserModifiable
+        - domainIds
+        - domainsUserModifiable
+        - requiredTvl
+        - requiredTvlUserModifiable
+        - requiredLiquidityMultiplier
+        - requiredLiquidityMultiplierUserModifiable
+        - includeRewardsApy
+        - includeRewardsApyUserModifiable
+        - createdAt
+        - updatedAt
+      properties:
+        token:
+          type: string
+          description: Token symbol (matches the key in `settings`).
+          example: "USDC"
+        enabled:
+          type: boolean
+          description: Whether this token should be presented as supported in the project UI.
+        metamaskCardEnabled:
+          type: boolean
+          nullable: true
+          description: Whether the MetaMask / card integration should be presented in project UI. Only applicable for USDC.
+        protocolIds:
+          type: array
+          description: Protocol IDs (0=Aave, 1=Morpho, 2=Euler) - match index values of domainIds and poolAddresses
+          items:
+            type: integer
+          example: [0, 1, 2]
+        protocolsUserModifiable:
+          type: boolean
+          description: Whether the client may change `protocolIds`.
+        poolAddresses:
+          type: array
+          description: Pool contract addresses - match index values of domainIds and protocolIds
+          items:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{40}$"
+        poolsUserModifiable:
+          type: boolean
+          description: Whether the client may change `poolAddresses`.
+        domainIds:
+          type: array
+          description: Domain IDs for configuration - match index values of protocolIds and poolAddresses
+          items:
+            type: integer
+        domainsUserModifiable:
+          type: boolean
+          description: Whether the client may change `domainIds`.
+        requiredTvl:
+          type: number
+          description: >
+            *(Recommended)* Minimum TVL (in USD) a pool must have before the rebalancer will route
+            funds into it. It is recommended to set this to avoid routing funds into low-liquidity
+            pools. Pass `0` only to explicitly disable this filter.
+            Example: `5000000` = $5M minimum TVL.
+          example: 5000000
+        requiredTvlUserModifiable:
+          type: boolean
+          description: Whether the client may change `requiredTvl`.
+        requiredLiquidityMultiplier:
+          type: number
+          description: >
+            *(Recommended)* Minimum ratio of pool liquidity to the user's position size. It is
+            recommended to set this as a safety guard against thin markets. Pass `0` only to
+            explicitly disable this filter.
+            Example: `10` = pool must hold at least 10× the user's position in available liquidity.
+          example: 10
+        requiredLiquidityMultiplierUserModifiable:
+          type: boolean
+          description: Whether the client may change `requiredLiquidityMultiplier`.
+        includeRewardsApy:
+          type: boolean
+          description: Whether reward APYs are included in APY calculations during rebalancing decisions.
+        includeRewardsApyUserModifiable:
+          type: boolean
+          description: Whether the client may change `includeRewardsApy`.
+        createdAt:
+          type: string
+          format: date-time
+          description: When this settings row was created (ISO-8601 offset datetime).
+        updatedAt:
+          type: string
+          format: date-time
+          description: When this settings row was last updated (ISO-8601 offset datetime).
+
+    ProjectSettingsResponse:
+      description: Project identity plus per-token rebalancer settings.
+      type: object
+      required:
+        - projectId
+        - projectEmail
+        - settings
+      properties:
+        projectId:
+          type: string
+          format: uuid
+          description: Project identifier.
+        projectEmail:
+          type: string
+          format: email
+          description: Email associated with the project.
+        settings:
+          type: object
+          description: >
+            Map of token symbol → settings. Includes every currently supported token; missing DB rows
+            are filled with defaults before return.
+          additionalProperties:
+            $ref: "#/components/schemas/ProjectSettingsToken"
+          example:
+            USDC:
+              token: "USDC"
+              enabled: true
+              metamaskCardEnabled: false
+              protocolIds: [0, 1, 2]
+              protocolsUserModifiable: true
+              poolAddresses: ["0xA238Dd80C259a72e81d7e4664a9801593F98d1c5", "0x794a61358D6845594F94dc1DB02A252b5b4814aD", "0x7e97fa6893871a2751b5fe961978dccb2c201e65"]
+              poolsUserModifiable: true
+              domainIds: [6, 3, 3]
+              domainsUserModifiable: true
+              requiredTvl: 5000000
+              requiredTvlUserModifiable: true
+              requiredLiquidityMultiplier: 10
+              requiredLiquidityMultiplierUserModifiable: true
+              includeRewardsApy: true
+              includeRewardsApyUserModifiable: true
+              createdAt: "2025-01-15T10:30:00Z"
+              updatedAt: "2025-01-15T10:30:00Z"
 
     SpendingInfo:
       description: >
@@ -3221,8 +3401,10 @@ components:
 tags:
   - name: Auth
     description: Get challenge / verify challenge authentication
-  - name: Config
-    description: Rebalancer configuration management
+  - name: Project Settings
+    description: Project settings management
+  - name: User Configuration
+    description: User rebalancer configuration management
   - name: Deposits
     description: Deposit operations for rebalancing
   - name: Withdrawals
