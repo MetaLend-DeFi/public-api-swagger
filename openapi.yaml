@@ -16,8 +16,9 @@ info:
       <li><b>Transaction Costs</b> – current deposit/withdraw on-behalf transaction fees and minimum amounts by chain.</li>
     </ul>
     All endpoints require an <b>X-API-Key</b>. <b>JWT authentication</b> is required on <b>deposit, withdrawal, and config update</b> operations.
-    
-    <b>Request API key: <a href="https://docs.google.com/forms/d/1dtVRld9UU_tFr0Okg9i-I9U0IuBMF1wzTc_LUUn2EA0" target="_blank" rel="noopener noreferrer">here</a></b>
+
+    <b>You can obtain API key by: <a href="https://developer.metalend.tech/" target="_blank" rel="noopener noreferrer">creating a new project</a></b>
+    <b>or by requesting it: <a href="https://docs.google.com/forms/d/1dtVRld9UU_tFr0Okg9i-I9U0IuBMF1wzTc_LUUn2EA0" target="_blank" rel="noopener noreferrer">directly.</a></b>
   contact:
     name: MetaLend API Support
     email: support@metalend.tech
@@ -653,7 +654,7 @@ paths:
 
         The signature must be 132 characters long (0x + 130 hex characters) and must be signed by the wallet address in the `walletAddress` field.
 
-        **Include Rewards APY**: The optional `includeRewardsApy` boolean flag (default: `true`) determines whether reward  APYs should be included in APY calculations during rebalancing decisions.
+        **Include Rewards APY**: The optional `includeRewardsApy` boolean flag (default: `true`) determines whether reward APYs should be included in APY calculations during rebalancing decisions.
 
         **Response**: Returns `201 Created` if this is the first configuration for the wallet, or `200 OK` if updating an existing configuration. The response includes the deployed rebalancer contract address and the list of configured tokens.
       operationId: updateConfig
@@ -2355,7 +2356,7 @@ components:
           description: Whether the client may change `requiredLiquidityMultiplier`.
         includeRewardsApy:
           type: boolean
-          description: Whether reward APY is included in calculations for this token.
+          description: Whether reward APYs are included in APY calculations during rebalancing decisions.
         includeRewardsApyUserModifiable:
           type: boolean
           description: Whether the client may change `includeRewardsApy`.
