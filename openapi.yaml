@@ -640,6 +640,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+              examples:
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+                coinbaseChainsEmpty:
+                  $ref: "#/components/examples/CoinbaseChainsEmpty"
+                coinbaseChainsUnsupported:
+                  $ref: "#/components/examples/CoinbaseChainsUnsupported"
+                coinbaseRedirectUrlInvalid:
+                  $ref: "#/components/examples/CoinbaseRedirectUrlInvalid"
+                coinbasePartnerUserRefTooLong:
+                  $ref: "#/components/examples/CoinbasePartnerUserRefTooLong"
         "401":
           $ref: "#/components/responses/UnauthorizedNoHeader"
         "403":
@@ -711,6 +724,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+              examples:
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+                coinbaseChainsEmpty:
+                  $ref: "#/components/examples/CoinbaseChainsEmpty"
+                coinbaseChainsUnsupported:
+                  $ref: "#/components/examples/CoinbaseChainsUnsupported"
+                coinbaseRedirectUrlInvalid:
+                  $ref: "#/components/examples/CoinbaseRedirectUrlInvalid"
+                coinbasePartnerUserRefTooLong:
+                  $ref: "#/components/examples/CoinbasePartnerUserRefTooLong"
         "401":
           $ref: "#/components/responses/UnauthorizedNoHeader"
         "403":
@@ -772,6 +798,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+              examples:
+                coinbasePartnerUserRefRequired:
+                  $ref: "#/components/examples/CoinbasePartnerUserRefRequired"
+                coinbasePartnerUserRefTooLong:
+                  $ref: "#/components/examples/CoinbasePartnerUserRefTooLong"
+                coinbasePageSizeInvalid:
+                  $ref: "#/components/examples/CoinbasePageSizeInvalid"
         "401":
           $ref: "#/components/responses/UnauthorizedNoHeader"
         "429":
@@ -831,6 +864,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+              examples:
+                coinbasePartnerUserRefRequired:
+                  $ref: "#/components/examples/CoinbasePartnerUserRefRequired"
+                coinbasePartnerUserRefTooLong:
+                  $ref: "#/components/examples/CoinbasePartnerUserRefTooLong"
+                coinbasePageSizeInvalid:
+                  $ref: "#/components/examples/CoinbasePageSizeInvalid"
         "401":
           $ref: "#/components/responses/UnauthorizedNoHeader"
         "429":
@@ -3677,6 +3717,60 @@ components:
         code: "INTERNAL_ERROR"
         internalCode: "REBALANCER_DOES_NOT_EXIST_FOR_WALLET"
         message: "Rebalancer does not exist for wallet address '0x1234567890123456789012345678901234567890'"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    CoinbaseChainsEmpty:
+      summary: Coinbase chains list is empty
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "ILLEGAL_ARGUMENT"
+        message: "Illegal argument: chains cannot be empty"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    CoinbaseChainsUnsupported:
+      summary: Coinbase chains contain unsupported values
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "ILLEGAL_ARGUMENT"
+        message: "Illegal argument: chains has unsupported values: solana. Supported values: ethereum, base, polygon, optimism, arbitrum"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    CoinbaseRedirectUrlInvalid:
+      summary: Coinbase redirect URL is invalid
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "ILLEGAL_ARGUMENT"
+        message: "Illegal argument: redirectUrl must be a valid absolute URL"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    CoinbasePartnerUserRefTooLong:
+      summary: Coinbase partner user reference too long
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "ILLEGAL_ARGUMENT"
+        message: "Illegal argument: partnerUserRef must be less than 50 characters"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    CoinbasePartnerUserRefRequired:
+      summary: Coinbase partner user reference is required
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "ILLEGAL_ARGUMENT"
+        message: "Illegal argument: partnerUserRef is required"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    CoinbasePageSizeInvalid:
+      summary: Coinbase page size is invalid
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "ILLEGAL_ARGUMENT"
+        message: "Illegal argument: pageSize must be a positive integer"
         requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
         retryAfterSeconds: null
 
