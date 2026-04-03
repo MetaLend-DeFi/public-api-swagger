@@ -659,6 +659,8 @@ paths:
 
         **Networks**: Provide one or more supported networks using the `chains` query parameter (comma-separated).
         The API validates the list and picks a default network for Coinbase checkout.
+
+        Further reference: https://docs.cdp.coinbase.com/onramp/offramp/offramp-overview
       operationId: getOfframpUrl
       tags:
         - Onramp & Offramp
