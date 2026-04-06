@@ -681,7 +681,7 @@ paths:
               includeRewardsApy: true
               requiredTvl: 5000000
               requiredLiquidityMultiplier: 10
-              collateralExposure: ["USDC", "USDT", "MUSD"]
+              collateralExposure: ["WETH", "cbBTC", "wstETH"]
               spendingCapRaw: "0"
       responses:
         "200":
@@ -853,7 +853,7 @@ paths:
                     totalWithdrawals: "0.00"
                     requiredTvl: "0"
                     requiredLiquidityMultiplier: "0"
-                    collateralExposure: ["USDC", "USDT"]
+                    collateralExposure: ["cbBTC", "WETH"]
                     spendingCapRaw: null
                     spendingCapFormatted: null
                     hasSignedConfig: false
@@ -1735,6 +1735,16 @@ components:
             *(Optional)* Maximum amount in raw token units (unformatted integer) the rebalancer
             is allowed to move in a single transaction. Pass `"0"` for no cap.
             Example for USDC (6 decimals): `"1000000000"` = $1,000 cap.
+        collateralExposure:
+          type: array
+          nullable: true
+          default: null
+          items:
+            type: string
+          description: >
+            Collateral exposure symbols for the pools in the configuration, must be taken from the pool catalog from GET /v1/pools,
+            unique and not empty. If you want to disable the filter, pass null.
+          example: ["WETH", "cbBTC", "wstETH"]
 
     CreateOrUpdateConfigResponse:
       type: object
