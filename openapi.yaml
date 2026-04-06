@@ -636,6 +636,19 @@ paths:
         - `1` = Morpho
         - `2` = Euler
 
+        **Collateral Exposure**: Collateral exposure symbols for the pools in the configuration, must be taken from the pool catalog from GET /v1/pools, unique and not empty. If you want to disable the filter, pass null.
+        example: ["WETH", "cbBTC", "wstETH"]
+
+        Tvl and liquidity multiplier are optional and can be used to filter the pools in the configuration.
+        Example:
+        - requiredTvl: 5000000
+        - requiredLiquidityMultiplier: 10
+        This will filter the pools in the configuration to only include pools that have a TVL of at least $5M and a liquidity multiplier of at least 10.
+        Example:
+        - requiredTvl: 0
+        - requiredLiquidityMultiplier: 0
+        This will disable the filter and include all pools in the configuration.
+
         **Pool Contracts**: Each pool contract address must be a valid checksummed Ethereum address (EIP-55) corresponding to a pool on the specified protocol. Pool addresses can be obtained from the `/v1/pools` endpoint.
 
         **Signature Requirement**: The `signature` field must be created using the following steps:
