@@ -645,7 +645,7 @@ paths:
           - `uint8[]` — `protocolIds` array
           - `address[]` — `poolAddresses` array
           - `uint32[]` — `domainIds` array
-          - `uint256` — `spendingCapRaw` (use `"0"` if not set)
+          - `uint256` — `spendingCapRaw` (use `"0"` if not set, can be set only for USDC, when setting this value, AAVE protocol on LINEA must be included in the configuration with a non-zero spending cap, otherwise the request will be rejected)
 
         2. Compute `keccak256` of the ABI-encoded bytes.
 
