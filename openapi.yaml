@@ -636,6 +636,20 @@ paths:
         - `1` = Morpho
         - `2` = Euler
 
+        **Collateral Exposure**: Collateral exposure symbols for the pools in the configuration, must be taken from the pool catalog from GET /v1/pools, unique and not empty. If you want to disable the filter, pass null.
+        example: ["WETH", "cbBTC", "wstETH"]
+
+        Tvl and liquidity multiplier are optional and can be used to filter the pools in the configuration.
+        Example:
+        - requiredTvl: 5000000
+        - requiredLiquidityMultiplier: 10
+        This will filter the pools in the configuration to only include pools that have a TVL of at least $5M and a liquidity multiplier of at least 10.
+        Example:
+        - requiredTvl: 0
+        - requiredLiquidityMultiplier: 0
+        This will disable the filter and include all pools in the configuration.
+        During deposits, pools that do not comply with filters (exposure, liquidity, tvl) are ignored. Active balances are also monitored periodically and if a pool with a deposit no longer complies with the filters, rebalance immediately happens outside to first available pool with highest APY %
+
         **Pool Contracts**: Each pool contract address must be a valid checksummed Ethereum address (EIP-55) corresponding to a pool on the specified protocol. Pool addresses can be obtained from the `/v1/pools` endpoint.
 
         **Signature Requirement**: The `signature` field must be created using the following steps:
@@ -681,6 +695,7 @@ paths:
               includeRewardsApy: true
               requiredTvl: 5000000
               requiredLiquidityMultiplier: 10
+              collateralExposure: ["WETH", "cbBTC", "wstETH"]
               spendingCapRaw: "0"
       responses:
         "200":
@@ -744,6 +759,20 @@ paths:
                   $ref: "#/components/examples/UpdateConfigRejectedRefillInProgress"
                 updateConfigRejectedPoolWithBalance:
                   $ref: "#/components/examples/UpdateConfigRejectedPoolWithBalance"
+                invalidCollateralExposureUnknownSymbols:
+                  $ref: "#/components/examples/InvalidCollateralExposureUnknownSymbols"
+                invalidCollateralExposureEmptyList:
+                  $ref: "#/components/examples/InvalidCollateralExposureEmptyList"
+                invalidCollateralExposureMaxSize:
+                  $ref: "#/components/examples/InvalidCollateralExposureMaxSize"
+                invalidCollateralExposureBlankEntry:
+                  $ref: "#/components/examples/InvalidCollateralExposureBlankEntry"
+                invalidCollateralExposureDuplicates:
+                  $ref: "#/components/examples/InvalidCollateralExposureDuplicates"
+                invalidCollateralExposureRequiresAave:
+                  $ref: "#/components/examples/InvalidCollateralExposureRequiresAave"
+                invalidCollateralExposureRequiredTvlNotMet:
+                  $ref: "#/components/examples/InvalidCollateralExposureRequiredTvlNotMet"
         "429":
           $ref: "#/components/responses/RateLimitExceeded"
         "500":
@@ -838,6 +867,7 @@ paths:
                     totalWithdrawals: "0.00"
                     requiredTvl: "0"
                     requiredLiquidityMultiplier: "0"
+                    collateralExposure: ["cbBTC", "WETH"]
                     spendingCapRaw: null
                     spendingCapFormatted: null
                     hasSignedConfig: false
@@ -915,7 +945,7 @@ paths:
       description: |
         Retrieves comprehensive information about supported DeFi protocols, pools, Total Value Locked (TVL), and Annual Percentage Yield (APY) data on supported networks.<br><br>
 
-        The response is a flat list of pools across supported protocols (Aave, Morpho, Euler) and tokens (USDC, MUSD, USDT, RLUSD). Each pool includes protocol metadata, pool address/name, underlying token details, TVL, liquidity, APY breakdowns, signing metadata, and blacklist status.<br><br>
+        The response is a flat list of pools across supported protocols (Aave, Morpho, Euler) and tokens (USDC, MUSD, USDT, RLUSD). Each pool includes protocol metadata, pool address/name, underlying token details, TVL, liquidity, collateral exposure, APY breakdowns, signing metadata, and blacklist status.<br><br>
 
         **APY Information**: The APY data includes native lending rates, reward provider APYs (e.g., MERKLE, BREVIS), and total combined APY. All APY values are formatted to 2 decimal places and represent 7-day average market rates adjusted by fees.<br><br>
 
@@ -1719,6 +1749,16 @@ components:
             *(Optional)* Maximum amount in raw token units (unformatted integer) the rebalancer
             is allowed to move in a single transaction. Pass `"0"` for no cap.
             Example for USDC (6 decimals): `"1000000000"` = $1,000 cap.
+        collateralExposure:
+          type: array
+          nullable: true
+          default: null
+          items:
+            type: string
+          description: >
+            Collateral exposure symbols for the pools in the configuration, must be taken from the pool catalog from GET /v1/pools,
+            unique and not empty. If you want to disable the filter, pass null.
+          example: ["WETH", "cbBTC", "wstETH"]
 
     CreateOrUpdateConfigResponse:
       type: object
@@ -1984,6 +2024,18 @@ components:
         poolLiquidity:
           type: string
           description: Available liquidity for the pool
+        collateralExposure:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+          description: >
+            Collateral exposure for the pool. Keys are Morpho market identifiers,
+            values are the collateral token symbols for each market.
+            Null for non-Morpho pools (Aave, Euler).
+          example:
+            "0x3b3769cfb1649e84374e7f0e0e46cbf9a1a39a62fa6a8b82e9e9edd1b3a3e3f7": "WETH"
+            "0xa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2": "cbBTC"
         poolApy:
           $ref: "#/components/schemas/PoolApyInfo"
         signData:
@@ -3265,6 +3317,69 @@ components:
         code: "CONFLICT_ERROR"
         internalCode: "UPDATE_CONFIG_REJECTED"
         message: "Config upsert rejected: Cannot disable pool with balance"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureUnknownSymbols:
+      summary: Unknown collateral symbols (not tracked in vault exposure)
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Unknown collateral symbol(s) not present in tracked vault exposure: FOO, XYZ"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureEmptyList:
+      summary: Empty collateralExposure array (use null to disable filter)
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Collateral exposure list cannot be empty. Use null to disable the filter."
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureMaxSize:
+      summary: collateralExposure list exceeds maximum length
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Collateral exposure list exceeds maximum allowed size of 200 entries."
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureBlankEntry:
+      summary: Blank string in collateralExposure list
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Entry at index 0 cannot be blank."
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureDuplicates:
+      summary: Duplicate symbols in collateralExposure list
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Collateral exposure list contains duplicate entries."
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureRequiresAave:
+      summary: collateralExposure set but no Aave pool in configuration
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Collateral exposure is enabled: at least one Aave pool (protocol 0) is required. Set collateralExposure to null to save a configuration without Aave."
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureRequiredTvlNotMet:
+      summary: No configured Aave pool meets required minimum TVL
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Collateral exposure is enabled: at least one configured Aave pool must meet your required minimum TVL (5000000 USD). None qualify. LINEA: Aave market TVL 1000000 USD is below required minimum TVL 5000000 USD"
         requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
         retryAfterSeconds: null
 

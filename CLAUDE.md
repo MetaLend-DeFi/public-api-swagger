@@ -174,6 +174,26 @@ Users must **never manually input pool addresses**.
 
 All selections must originate from the `/v1/pools` endpoint.
 
+### Collateral exposure (`collateralExposure`) — how the UI must work
+
+When the user configures **`collateralExposure`** (optional list on user config / related flows in `openapi.yaml`):
+
+1. **Source of allowed choices (catalog)**  
+   Do **not** let users type arbitrary token symbols. Build the **choice set** from the **pool catalog**: call **`GET /v1/pools`** and **collect every collateral symbol** that appears on pools (each pool may expose collateral exposure / underlying collateral metadata per the spec). **Union** those symbols across all pools, then **deduplicate** into a **single sorted list of unique strings** (e.g. uppercase for display consistency). That list is what the user **selects from** (multi-select checkboxes, chips, etc.).
+
+2. **What gets saved**  
+   The value persisted in **`collateralExposure`** must be:
+   - **Only** symbols taken from that catalog-driven set (so they correspond to collateral the system knows about via pools / backend tracking).
+   - **Uniqueness**: **no duplicate** entries in the array (the API rejects duplicates).
+   - **No empty strings** (the API rejects blank entries).
+   - **`null` / omit** means the filter is **disabled**; an **empty array `[]`** is **invalid** — use **`null`** to turn the filter off.
+
+3. **Why**  
+   The backend validates collateral symbols against **tracked** exposure and structural rules (non-empty if present, max length, uniqueness). The UI should **prevent** invalid selections instead of relying on errors, by deriving options from **`/v1/pools`** and enforcing a deduped selection.
+
+4. **Relation to pool selection**  
+   Pool selection (`domainIds` / `protocolIds` / `poolAddresses`) still comes **only** from selected rows in `/v1/pools`. **Collateral exposure** is a **separate** filter list: options are **aggregated from pool metadata**, not hand-typed.
+
 ## STEP 4 — FRONTEND ARCHITECTURE
 
 Design the application architecture derived strictly from the API.
