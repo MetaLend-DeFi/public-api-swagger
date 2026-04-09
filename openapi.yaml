@@ -648,6 +648,7 @@ paths:
         - requiredTvl: 0
         - requiredLiquidityMultiplier: 0
         This will disable the filter and include all pools in the configuration.
+        During deposits, pools that do not comply with filters (exposure, liquidity, tvl) are ignored. Active balances are also monitored periodically and if a pool with a deposit no longer complies with the filters, rebalance immediately happens outside to first available pool with highest APY %
 
         **Pool Contracts**: Each pool contract address must be a valid checksummed Ethereum address (EIP-55) corresponding to a pool on the specified protocol. Pool addresses can be obtained from the `/v1/pools` endpoint.
 
