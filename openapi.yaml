@@ -2024,10 +2024,17 @@ components:
           type: string
           description: Available liquidity for the pool
         collateralExposure:
-          type: array
-          items:
+          type: object
+          additionalProperties:
             type: string
-          description: Collateral exposure for the pool
+          nullable: true
+          description: >
+            Collateral exposure for the pool. Keys are Morpho market identifiers,
+            values are the collateral token symbols for each market.
+            Null for non-Morpho pools (Aave, Euler).
+          example:
+            "0x3b3769cfb1649e84374e7f0e0e46cbf9a1a39a62fa6a8b82e9e9edd1b3a3e3f7": "WETH"
+            "0xa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2": "cbBTC"
         poolApy:
           $ref: "#/components/schemas/PoolApyInfo"
         signData:
