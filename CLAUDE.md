@@ -313,7 +313,29 @@ Transactions must **never execute on the wrong chain**.
 
 ---
 
-## STEP 8 — TOKEN BALANCE LOGIC
+## STEP 8 - ONRAMP & OFFRAMP
+
+The frontend must explicitly implement and expose the 2 Coinbase ramp endpoints from `openapi.yaml`.
+
+Required endpoints:
+
+1. `GET /v1/onramp` — generate Coinbase onramp URL + session token
+2. `GET /v1/offramp` — generate Coinbase offramp URL + session token
+
+Implementation requirements:
+
+• Use generated request/response types only (no manual typings).
+• For `/v1/onramp` and `/v1/offramp`, require both API key and JWT auth, and ensure `address` matches the JWT wallet.
+• For ramp URL generation, always pass `chains` (comma-separated Coinbase-supported chains, mentioned in the `openapi.yaml` file).
+• Support optional `redirectUrl` in URL generation requests.
+
+UI requirements:
+
+• Add a clear “Onramp / Offramp” feature area.  
+• Let users generate and open Coinbase-hosted URLs for both flows.  
+• Display returned session/token metadata and actionable errors.  
+
+## STEP 9 — TOKEN BALANCE LOGIC
 
 Token balances MUST be fetched directly from the blockchain.
 
@@ -331,7 +353,7 @@ Balances must NOT rely on the API.
 
 ---
 
-## STEP 9 — DEPOSIT FLOW
+## STEP 10 — DEPOSIT FLOW
 
 Deposit flow must implement:
 
@@ -356,7 +378,7 @@ Deposit must **NOT execute until approval confirmation is complete**.
 
 ---
 
-## STEP 10 — WITHDRAW FLOW
+## STEP 11 — WITHDRAW FLOW
 
 Withdrawable balances must come from the API.
 
@@ -370,7 +392,7 @@ Withdraw page must:
 
 ---
 
-## STEP 11 — QUERY AND MUTATION MANAGEMENT
+## STEP 12 — QUERY AND MUTATION MANAGEMENT
 
 All GET endpoints:
 
@@ -388,7 +410,7 @@ All mutation endpoints:
 
 ---
 
-## STEP 12 — GLOBAL ERROR HANDLING
+## STEP 13 — GLOBAL ERROR HANDLING
 
 The application must include:
 
@@ -407,7 +429,7 @@ No unhandled promises allowed.
 
 ---
 
-## STEP 13 — IMPLEMENTATION
+## STEP 14 — IMPLEMENTATION
 
 Begin implementation ONLY after:
 
@@ -424,19 +446,20 @@ Provide:
 5. React Query configuration
 6. Pool list UI
 7. Pool selection UI
-8. Deposit flow
-9. Withdraw flow
-10. error handling utilities
-11. toast notification system
-12. environment configuration
-13. setup instructions
-14. run instructions
+8. Onramp & Offramp flows
+9. Deposit flow
+10. Withdraw flow
+11. error handling utilities
+12. toast notification system
+13. environment configuration
+14. setup instructions
+15. run instructions
 
 The project MUST compile and run successfully.
 
 ---
 
-## STEP 14 — SELF-CHECK
+## STEP 15 — SELF-CHECK
 
 Before finalizing the output perform a verification step.
 

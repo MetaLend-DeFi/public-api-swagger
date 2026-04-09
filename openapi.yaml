@@ -619,14 +619,6 @@ paths:
           schema:
             type: string
             format: uri
-        - name: partnerUserRef
-          in: query
-          required: false
-          description: Optional project user reference used for Coinbase transaction lookup
-          schema:
-            type: string
-            minLength: 1
-            maxLength: 49
       responses:
         "200":
           description: Coinbase onramp URL generated successfully
@@ -651,8 +643,6 @@ paths:
                   $ref: "#/components/examples/CoinbaseChainsUnsupported"
                 coinbaseRedirectUrlInvalid:
                   $ref: "#/components/examples/CoinbaseRedirectUrlInvalid"
-                coinbasePartnerUserRefTooLong:
-                  $ref: "#/components/examples/CoinbasePartnerUserRefTooLong"
         "401":
           $ref: "#/components/responses/UnauthorizedNoHeader"
         "403":
@@ -703,14 +693,6 @@ paths:
           schema:
             type: string
             format: uri
-        - name: partnerUserRef
-          in: query
-          required: false
-          description: Optional project user reference used for Coinbase transaction lookup
-          schema:
-            type: string
-            minLength: 1
-            maxLength: 49
       responses:
         "200":
           description: Coinbase offramp URL generated successfully
@@ -735,8 +717,6 @@ paths:
                   $ref: "#/components/examples/CoinbaseChainsUnsupported"
                 coinbaseRedirectUrlInvalid:
                   $ref: "#/components/examples/CoinbaseRedirectUrlInvalid"
-                coinbasePartnerUserRefTooLong:
-                  $ref: "#/components/examples/CoinbasePartnerUserRefTooLong"
         "401":
           $ref: "#/components/responses/UnauthorizedNoHeader"
         "403":
@@ -750,7 +730,7 @@ paths:
     get:
       summary: List Coinbase onramp transactions
       description: |
-        Lists Coinbase onramp transaction statuses for a given `partnerUserRef`.
+        Lists Coinbase onramp transaction statuses for a given `principal API key`.
 
         **Authentication**: Requires API key.
 
@@ -763,14 +743,6 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: partnerUserRef
-          in: query
-          required: true
-          description: Partner user reference used when creating onramp sessions
-          schema:
-            type: string
-            minLength: 1
-            maxLength: 49
         - name: pageKey
           in: query
           required: false
@@ -799,10 +771,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
               examples:
-                coinbasePartnerUserRefRequired:
-                  $ref: "#/components/examples/CoinbasePartnerUserRefRequired"
-                coinbasePartnerUserRefTooLong:
-                  $ref: "#/components/examples/CoinbasePartnerUserRefTooLong"
                 coinbasePageSizeInvalid:
                   $ref: "#/components/examples/CoinbasePageSizeInvalid"
         "401":
@@ -816,7 +784,7 @@ paths:
     get:
       summary: List Coinbase offramp transactions
       description: |
-        Lists Coinbase offramp transaction statuses for a given `partnerUserRef`.
+        Lists Coinbase offramp transaction statuses for a given `principal API key`.
 
         **Authentication**: Requires API key.
 
@@ -829,14 +797,6 @@ paths:
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: partnerUserRef
-          in: query
-          required: true
-          description: Partner user reference used when creating offramp sessions
-          schema:
-            type: string
-            minLength: 1
-            maxLength: 49
         - name: pageKey
           in: query
           required: false
@@ -865,10 +825,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
               examples:
-                coinbasePartnerUserRefRequired:
-                  $ref: "#/components/examples/CoinbasePartnerUserRefRequired"
-                coinbasePartnerUserRefTooLong:
-                  $ref: "#/components/examples/CoinbasePartnerUserRefTooLong"
                 coinbasePageSizeInvalid:
                   $ref: "#/components/examples/CoinbasePageSizeInvalid"
         "401":
@@ -3744,24 +3700,6 @@ components:
         code: "ILLEGAL_ARGUMENT_ERROR"
         internalCode: "ILLEGAL_ARGUMENT"
         message: "Illegal argument: redirectUrl must be a valid absolute URL"
-        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
-        retryAfterSeconds: null
-
-    CoinbasePartnerUserRefTooLong:
-      summary: Coinbase partner user reference too long
-      value:
-        code: "ILLEGAL_ARGUMENT_ERROR"
-        internalCode: "ILLEGAL_ARGUMENT"
-        message: "Illegal argument: partnerUserRef must be less than 50 characters"
-        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
-        retryAfterSeconds: null
-
-    CoinbasePartnerUserRefRequired:
-      summary: Coinbase partner user reference is required
-      value:
-        code: "ILLEGAL_ARGUMENT_ERROR"
-        internalCode: "ILLEGAL_ARGUMENT"
-        message: "Illegal argument: partnerUserRef is required"
         requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
         retryAfterSeconds: null
 
