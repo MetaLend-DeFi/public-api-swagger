@@ -666,6 +666,9 @@ paths:
         3. Sign the resulting hash using `personal_sign` (i.e. `eth_sign` with the standard Ethereum prefix `\x19Ethereum Signed Message:\n32`). In viem this is `walletClient.signMessage({ account, message: { raw: hash } })`.
 
         The signature must be 132 characters long (0x + 130 hex characters) and must be signed by the wallet address in the `walletAddress` field.
+        
+        **Smart Contract Wallets / ERC-6492**: The optional `chain` parameter provides signature validation context for predeploy smart contract wallets (ERC-6492).
+        Set this when the signer is a smart contract wallet that may not be deployed yet on-chain. If not needed, leave `chain` as `null`.
 
         **Include Rewards APY**: The optional `includeRewardsApy` boolean flag (default: `true`) determines whether reward APYs should be included in APY calculations during rebalancing decisions.
 
@@ -697,6 +700,7 @@ paths:
               requiredLiquidityMultiplier: 10
               collateralExposure: ["WETH", "cbBTC", "wstETH"]
               spendingCapRaw: "0"
+              chain: "BASE"
       responses:
         "200":
           description: Configuration updated successfully
@@ -1759,6 +1763,17 @@ components:
             Collateral exposure symbols for the pools in the configuration, must be taken from the pool catalog from GET /v1/pools,
             unique and not empty. If you want to disable the filter, pass null.
           example: ["WETH", "cbBTC", "wstETH"]
+        chain:
+          type: string
+          enum: [BASE, POLYGON, ARBITRUM, OPTIMISM, AVALANCHE, LINEA, ETHEREUM]
+          nullable: true
+          default: null
+          description: >
+            Optional signature validation context chain for Smart Contract Wallets and
+            predeploy contract signatures (ERC-6492). Use this when the signer is a
+            smart contract wallet that may not yet be deployed. Leave `null` for EOAs
+            or when no additional chain context is required.
+          example: "BASE"
 
     CreateOrUpdateConfigResponse:
       type: object
