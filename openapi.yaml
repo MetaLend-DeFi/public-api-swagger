@@ -575,6 +575,265 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /v1/onramp:
+    get:
+      summary: Generate Coinbase onramp URL
+      description: |
+        Generates a Coinbase onramp URL and Coinbase session token for a wallet.
+
+        **Authentication**: Requires both API key and JWT. The JWT wallet must match the `address` query parameter.
+
+        **Supported assets**: Currently fixed to `USDC`.
+
+        **Networks**: Provide one or more supported networks using the `chains` query parameter (comma-separated).
+        The API validates the list and picks a default network for Coinbase checkout. We recommend using any other network than Ethereum mainnet to avoid high gas fees.
+        The rebalancing feature moves all funds outside of Ethereum after deposit anyway.
+
+        Further reference: https://docs.cdp.coinbase.com/onramp/onramp-overview
+      operationId: getOnrampUrl
+      tags:
+        - Onramp & Offramp
+      security:
+        - ApiKeyAuth: []
+          JwtAuth: []
+      parameters:
+        - name: address
+          in: query
+          required: true
+          description: User wallet address (must match JWT principal wallet, must be checksummed per EIP-55)
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{40}$"
+          example: "0x1234567890123456789012345678901234567890"
+        - name: chains
+          in: query
+          required: true
+          description: Comma-separated chain list supported by Coinbase integration. Available values "ethereum", "base", "polygon", "optimism", "arbitrum". If more than one is selected, we pick default by this preference "base", "arbitrum", "optimism", "polygon", "ethereum"
+          schema:
+            type: string
+          example: "base,ethereum"
+        - name: redirectUrl
+          in: query
+          required: false
+          description: Optional redirect URL used by Coinbase after flow completion
+          schema:
+            type: string
+            format: uri
+      responses:
+        "200":
+          description: Coinbase onramp URL generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoinbaseRampUrlResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+                coinbaseChainsEmpty:
+                  $ref: "#/components/examples/CoinbaseChainsEmpty"
+                coinbaseChainsUnsupported:
+                  $ref: "#/components/examples/CoinbaseChainsUnsupported"
+                coinbaseRedirectUrlInvalid:
+                  $ref: "#/components/examples/CoinbaseRedirectUrlInvalid"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/offramp:
+    get:
+      summary: Generate Coinbase offramp URL
+      description: |
+        Generates a Coinbase offramp URL and Coinbase session token for a wallet.
+
+        **Authentication**: Requires both API key and JWT. The JWT wallet must match the `address` query parameter.
+
+        **Networks**: Provide one or more supported networks using the `chains` query parameter (comma-separated).
+        The API validates the list and picks a default network for Coinbase checkout.
+
+        Further reference: https://docs.cdp.coinbase.com/onramp/offramp/offramp-overview
+      operationId: getOfframpUrl
+      tags:
+        - Onramp & Offramp
+      security:
+        - ApiKeyAuth: []
+          JwtAuth: []
+      parameters:
+        - name: address
+          in: query
+          required: true
+          description: User wallet address (must match JWT principal wallet, must be checksummed per EIP-55)
+          schema:
+            type: string
+            pattern: "^0x[a-fA-F0-9]{40}$"
+          example: "0x1234567890123456789012345678901234567890"
+        - name: chains
+          in: query
+          required: true
+          description: Comma-separated chain list supported by Coinbase integration. Available values "ethereum", "base", "polygon", "optimism", "arbitrum". If more than one is selected, we pick default by this preference "base", "arbitrum", "optimism", "polygon", "ethereum"
+          schema:
+            type: string
+          example: "base,ethereum"
+        - name: redirectUrl
+          in: query
+          required: false
+          description: Optional redirect URL used by Coinbase after flow completion
+          schema:
+            type: string
+            format: uri
+      responses:
+        "200":
+          description: Coinbase offramp URL generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoinbaseRampUrlResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                invalidAddressFormat:
+                  $ref: "#/components/examples/InvalidAddressFormat"
+                invalidAddressCheckSum:
+                  $ref: "#/components/examples/InvalidAddressCheckSum"
+                coinbaseChainsEmpty:
+                  $ref: "#/components/examples/CoinbaseChainsEmpty"
+                coinbaseChainsUnsupported:
+                  $ref: "#/components/examples/CoinbaseChainsUnsupported"
+                coinbaseRedirectUrlInvalid:
+                  $ref: "#/components/examples/CoinbaseRedirectUrlInvalid"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/onramp/transactions:
+    get:
+      summary: List Coinbase onramp transactions
+      description: |
+        Lists Coinbase onramp transaction statuses for a given `principal API key`.
+
+        **Authentication**: Requires API key.
+
+        **Pagination**:
+        - `pageKey` continues from a previous response.
+        - `pageSize` must be between 1 and 1000 when provided.
+      operationId: getOnrampTransactionStatusList
+      tags:
+        - Onramp & Offramp
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: pageKey
+          in: query
+          required: false
+          description: Coinbase pagination key from a prior response
+          schema:
+            type: string
+        - name: pageSize
+          in: query
+          required: false
+          description: Number of items to return (1 to 1000)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: Coinbase onramp transaction statuses retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoinbaseTransactionStatusListResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                coinbasePageSizeInvalid:
+                  $ref: "#/components/examples/CoinbasePageSizeInvalid"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/offramp/transactions:
+    get:
+      summary: List Coinbase offramp transactions
+      description: |
+        Lists Coinbase offramp transaction statuses for a given `principal API key`.
+
+        **Authentication**: Requires API key.
+
+        **Pagination**:
+        - `pageKey` continues from a previous response.
+        - `pageSize` must be between 1 and 1000 when provided.
+      operationId: getOfframpTransactionStatusList
+      tags:
+        - Onramp & Offramp
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: pageKey
+          in: query
+          required: false
+          description: Coinbase pagination key from a prior response
+          schema:
+            type: string
+        - name: pageSize
+          in: query
+          required: false
+          description: Number of items to return (1 to 1000)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: Coinbase offramp transaction statuses retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoinbaseTransactionStatusListResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              examples:
+                coinbasePageSizeInvalid:
+                  $ref: "#/components/examples/CoinbasePageSizeInvalid"
+        "401":
+          $ref: "#/components/responses/UnauthorizedNoHeader"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /v1/projects/settings/tokens:
     get:
       summary: Get project token settings
@@ -1680,6 +1939,110 @@ components:
           type: string
           description: Current version of the rebalancer contracts used for EIP-712 signing domain
           example: "1"
+
+    CoinbaseRampUrlResponse:
+      type: object
+      required:
+        - url
+        - sessionToken
+        - defaultNetwork
+        - networks
+        - asset
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Coinbase-hosted onramp/offramp URL
+        sessionToken:
+          type: string
+          description: Coinbase session token used to initialize the ramp flow
+        defaultNetwork:
+          type: string
+          description: Selected default network passed to Coinbase
+          example: "base"
+        networks:
+          type: array
+          description: Validated network list used in the Coinbase session
+          items:
+            type: string
+          example: ["base", "ethereum"]
+        asset:
+          type: string
+          description: Asset symbol used for the flow
+          example: "USDC"
+
+    CoinbaseTransactionStatusListResponse:
+      type: object
+      required:
+        - transactions
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoinbaseTransactionStatus"
+        next_page_key:
+          type: string
+          nullable: true
+          description: Coinbase pagination key for the next page
+        total_count:
+          type: string
+          nullable: true
+          description: Total item count as returned by Coinbase
+
+    CoinbaseTransactionStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          nullable: true
+        purchase_currency:
+          type: string
+          nullable: true
+        purchase_network:
+          type: string
+          nullable: true
+        purchase_amount:
+          type: string
+          nullable: true
+        payment_total:
+          type: string
+          nullable: true
+        payment_subtotal:
+          type: string
+          nullable: true
+        coinbase_fee:
+          type: string
+          nullable: true
+        network_fee:
+          type: string
+          nullable: true
+        exchange_rate:
+          type: string
+          nullable: true
+        tx_hash:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        user_id:
+          type: string
+          nullable: true
+        partner_user_ref:
+          type: string
+          nullable: true
+        payment_method:
+          type: string
+          nullable: true
+        transaction_id:
+          type: string
+          nullable: true
+        wallet_address:
+          type: string
+          nullable: true
+        type:
+          type: string
+          nullable: true
 
     CreateOrUpdateConfigRequest:
       type: object
@@ -3428,6 +3791,42 @@ components:
         requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
         retryAfterSeconds: null
 
+    CoinbaseChainsEmpty:
+      summary: Coinbase chains list is empty
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "ILLEGAL_ARGUMENT"
+        message: "Illegal argument: chains cannot be empty"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    CoinbaseChainsUnsupported:
+      summary: Coinbase chains contain unsupported values
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "ILLEGAL_ARGUMENT"
+        message: "Illegal argument: chains has unsupported values: solana. Supported values: ethereum, base, polygon, optimism, arbitrum"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    CoinbaseRedirectUrlInvalid:
+      summary: Coinbase redirect URL is invalid
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "ILLEGAL_ARGUMENT"
+        message: "Illegal argument: redirectUrl must be a valid absolute URL"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    CoinbasePageSizeInvalid:
+      summary: Coinbase page size is invalid
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "ILLEGAL_ARGUMENT"
+        message: "Illegal argument: pageSize must be a positive integer"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
   responses:
     UnauthorizedNoHeader:
       description: No authorization header provided
@@ -3524,6 +3923,8 @@ tags:
     description: Deposit operations for rebalancing
   - name: Withdrawals
     description: Withdrawal operations from pools
+  - name: Onramp & Offramp
+    description: Coinbase fiat onramp/offramp URL generation and transaction status lookup
   - name: Balances
     description: Balance queries across pools and protocols
   - name: Rewards
