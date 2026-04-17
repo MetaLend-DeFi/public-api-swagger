@@ -669,6 +669,7 @@ paths:
         
         **Smart Contract Wallets / ERC-6492**: The optional `chain` parameter provides signature validation context for predeploy smart contract wallets (ERC-6492).
         Set this when the signer is a smart contract wallet that may not be deployed yet on-chain. If not needed, leave `chain` as `null`.
+        When `chain` is set for contract-wallet validation, all `domainIds` must belong to that same chain (mixed-chain domain IDs are rejected).
 
         **Include Rewards APY**: The optional `includeRewardsApy` boolean flag (default: `true`) determines whether reward APYs should be included in APY calculations during rebalancing decisions.
 
@@ -700,7 +701,7 @@ paths:
               requiredLiquidityMultiplier: 10
               collateralExposure: ["WETH", "cbBTC", "wstETH"]
               spendingCapRaw: "0"
-              chain: "BASE"
+              chain: "LINEA"
       responses:
         "200":
           description: Configuration updated successfully
@@ -1707,7 +1708,10 @@ components:
           type: array
           items:
             type: integer
-          description: Domain IDs - must match length and index values must be relevant to protocolIds and poolAddresses
+          description: >
+            Domain IDs - must match length and index values must be relevant to
+            protocolIds and poolAddresses. For smart contract wallet validation
+            (when `chain` is set), all domain IDs must be on that same chain.
           example: [11, 11, 11]
         protocolIds:
           type: array
@@ -1771,8 +1775,9 @@ components:
           description: >
             Optional signature validation context chain for Smart Contract Wallets and
             predeploy contract signatures (ERC-6492). Use this when the signer is a
-            smart contract wallet that may not yet be deployed. Leave `null` for EOAs
-            or when no additional chain context is required.
+            smart contract wallet that may not yet be deployed. When provided, every
+            value in `domainIds` must match this chain's domain ID. Leave `null` for
+            EOAs or when no additional chain context is required.
           example: "BASE"
 
     CreateOrUpdateConfigResponse:
