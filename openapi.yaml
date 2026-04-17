@@ -122,6 +122,8 @@ paths:
         ## Notes
         - Smart contract wallets that do not comply with standard signature length are currently not supported
         - For signature-based deposits, ensure timestamps are within valid range
+
+        **Rate limiting**: 1 request per 6 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: createDeposit
       tags:
         - Deposits
@@ -274,6 +276,8 @@ paths:
 
         **Note:** Tracking IDs expire after 5 minutes. If you receive a error code, 
         the tracking ID either doesn't exist or has been purged from the system.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getDepositStatus
       tags:
         - Deposits
@@ -378,6 +382,8 @@ paths:
         `Amount` must be at least 0.1 (stablecoin) of the token to cover on-behalf transaction gas fees and no more than the available balance in the specified pool. This value is specified in raw units (e.g., 6 decimals for USDC). Token decimals are included in the `token` object of `/v1/balances/{walletAddress}` endpoint for reference.
 
         `Signature` must be of length 132 (0x + 130 characters) and signed by the wallet address associated with the **JWT token**.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
         
       operationId: createWithdrawal
       tags:
@@ -501,6 +507,8 @@ paths:
         - `PROCESSING`
         - `SUCCESS`
         - `FAILED`.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       tags:
         - Withdrawals
       security:
@@ -554,6 +562,8 @@ paths:
       description: |
         Returns the current version of the rebalancer contracts used for withdrawal signing.
         This value should be used as the `version` field in the EIP-712 domain when constructing withdrawal signatures.
+
+        **Rate limiting**: 1 request per 6 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getWithdrawalVersion
       tags:
         - Withdrawals
@@ -584,8 +594,8 @@ paths:
         **Recommended**: Use Project Settings as a responsible user config settings. Use this project settings as a default for new users (without signed config). Treat overlapping configurations as a violation.      
 
         **Authentication**: Requires a valid API key. The API key must be associated with a project.
-        
-        **Rate limiting**: 1 request per 3 seconds per client IP (additional requests may receive HTTP 429).
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getProjectSettings
       tags:
         - Project Settings
@@ -674,6 +684,8 @@ paths:
         **Include Rewards APY**: The optional `includeRewardsApy` boolean flag (default: `true`) determines whether reward APYs should be included in APY calculations during rebalancing decisions.
 
         **Response**: Returns `201 Created` if this is the first configuration for the wallet, or `200 OK` if updating an existing configuration. The response includes the deployed rebalancer contract address and the list of configured tokens.
+
+        **Rate limiting**: 1 request per 6 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: updateConfig
       tags:
         - User Configuration
@@ -804,6 +816,8 @@ paths:
         When `hasSignedConfig` is false for a token, the configuration data shows what the default state allows, but it hasn't been actively set by the user for that token. This state must be signed by user to confirm the configuration. Each token can have a different `hasSignedConfig` status.
 
         **Note:** Requires a valid API key to query configurations.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getConfig
       tags:
         - User Configuration
@@ -909,6 +923,8 @@ paths:
         - **Rebalancing Manager Address**: The address of the rebalancing manager contract
 
         This represents the default state of the configuration, which can be used as a reference or starting point for rebalancing operations. Use this to compare against user's existing configuration.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getDefaultConfig
       tags:
         - User Configuration
@@ -965,6 +981,8 @@ paths:
         not by `poolAddress`.
 
         This endpoint requires an API key and can be used to discover available investment opportunities before configuring a rebalancer or making deposits.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getPools
       tags:
         - Pools
@@ -1019,6 +1037,8 @@ paths:
         **Summary**: The response includes an aggregate summary with total balance across all queried tokens, total net earnings, queried tokens, and queried chains.<br><br>
 
         **Error Handling**: If blockchain queries fail or the wallet has no rebalancer configuration, appropriate error responses are returned. The endpoint uses an all-or-nothing approach - if any token query fails, the entire request fails with a 500 or 503 status code.
+
+        **Rate limiting**: 1 request per 12 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getRebalancerBalances
       tags:
         - Balances
@@ -1110,6 +1130,8 @@ paths:
           data: claimTransaction.calldata,
           chainId: claimTransaction.chainId,
         })
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getRewards
       tags:
         - Rewards
@@ -1163,6 +1185,8 @@ paths:
       summary: Get transaction costs
       description: |
         Retrieves gas fee estimates and minimum deposit/withdraw amounts per chain for the specified token.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getTransactionCosts
       tags:
         - Transaction Costs
@@ -1203,6 +1227,8 @@ paths:
       summary: Create wallet challenge
       description: |
         Issues a challenge message that must be signed by the wallet owner.
+
+        **Rate limiting**: 1 request per 6 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: createAuthChallenge
       tags:
         - Auth
@@ -1256,6 +1282,8 @@ paths:
       summary: Verify wallet challenge
       description: |
         Verifies the signed challenge and issues a JWT for authenticated requests.
+
+        **Rate limiting**: 1 request per 12 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: verifyAuthChallenge
       tags:
         - Auth
@@ -1318,6 +1346,8 @@ paths:
       summary: Get bridge balances
       description: |
         Retrieves bridge balances for the specified wallet address.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getBridgeBalances
       tags:
         - Balances
@@ -2062,7 +2092,7 @@ components:
           $ref: "#/components/schemas/PoolSignData"
         blacklisted:
           type: boolean
-          description: Indicates whether the pool is blacklisted
+          description: Indicates whether the pool has been blacklisted (banned) by Morpho due to a critical security issue. Blacklisted pools are deprecated and retained solely for backwards compatibility — use is strongly discouraged. 
 
     PoolSignData:
       type: object
@@ -3485,22 +3515,52 @@ components:
                 requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
                 retryAfterSeconds: null
 
-    # TODO: add limits to relevant endpoints
     RateLimitExceeded:
-      description: Rate limit exceeded
+      description: |
+        Too many requests for this endpoint. Limits are enforced per client IP for the public API routes backed by `RebalancerResource` (and related resources using the same filter).
+
+        Response headers (when throttled):
+        - `Retry-After`: seconds to wait before retrying (matches the rate-limit window duration for that endpoint).
+        - `X-RateLimit-Limit`: maximum requests allowed in the window (e.g. `1`).
+        - `X-RateLimit-Remaining`: remaining requests in the window (`0` when throttled).
+        - `X-RateLimit-Reset`: Unix timestamp (seconds) when the limit window resets.
+
+        `internalCode` in the JSON body is `THROTTLE_PER_IP` for IP-scoped limits (other values may apply for different scopes in the backend).
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying this endpoint.
+          schema:
+            type: integer
+            example: 3
+        X-RateLimit-Limit:
+          description: Maximum number of requests allowed in the current window for this endpoint.
+          schema:
+            type: integer
+            example: 1
+        X-RateLimit-Remaining:
+          description: Remaining requests in the current window.
+          schema:
+            type: integer
+            example: 0
+        X-RateLimit-Reset:
+          description: Unix timestamp (seconds) when the current limit window resets.
+          schema:
+            type: integer
+            format: int64
+            example: 1713264123
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ApiError"
           examples:
-            Rate Limit Exceeded:
-              summary: Rate limit exceeded
+            rateLimitExceededPerIp:
+              summary: Rate limit exceeded (per client IP)
               value:
                 code: "RATE_LIMIT_EXCEEDED"
-                internalCode: "RATE_LIMIT_EXCEEDED"
-                message: "Rate limit exceeded. Please try again later"
+                internalCode: "THROTTLE_PER_IP"
+                message: "Rate limit exceeded. Maximum 1 requests per 3 seconds allowed. Please try again later."
                 requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
-                retryAfterSeconds: 60
+                retryAfterSeconds: 3
 
     InternalError:
       description: Internal server error
