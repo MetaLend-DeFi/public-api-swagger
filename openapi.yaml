@@ -1448,7 +1448,7 @@ components:
           enum: [BASE, POLYGON, ARBITRUM, OPTIMISM, AVALANCHE, LINEA, ETHEREUM]
           nullable: true
           default: null
-          description: When signing with a Smart Contract Wallet, specify the chain kind. Currently only Coinbase Smart Wallet is supported. This provides signature verification context
+          description: When signing with a Smart Contract Wallet, specify the chain kind. This provides signature verification context
           example: "BASE"
 
     VerifyChallengeResponse:
