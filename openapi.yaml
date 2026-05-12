@@ -2072,7 +2072,7 @@ components:
           $ref: "#/components/schemas/PoolSignData"
         blacklisted:
           type: boolean
-          description: Indicates whether the pool has been blacklisted (banned) by Morpho due to a critical security issue. Blacklisted pools are deprecated and retained solely for backwards compatibility — use is strongly discouraged. 
+          description: Indicates whether the pool has been blacklisted (banned) due to a third party critical security issue. Blacklisted pools are deprecated and retained solely for backwards compatibility. New deposits are never routed to blacklisted pools, and all existing balances are automatically rebalanced out of such pools when possible (balance is large enough to pay on-behalf fee and there is enough liquidity to withdraw).
 
     PoolSignData:
       type: object
