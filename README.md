@@ -6,7 +6,7 @@ OpenAPI specification for the **MetaLend Rebalancing API** — a cross-protocol,
 
 | File | Purpose |
 |---|---|
-| `openapi.yaml` | OpenAPI 3.0.3 specification — the single source of truth for all backend endpoints |
+| `openapi/openapi.yaml` | OpenAPI 3.0.3 specification — the single source of truth for all backend endpoints |
 | `CLAUDE.md` | AI code-generation instructions for building a complete production frontend from the spec |
 
 ## API Overview
@@ -35,7 +35,7 @@ The `CLAUDE.md` file contains structured instructions that guide AI coding assis
 
 ### How It Works
 
-`CLAUDE.md` is loaded automatically as a workspace rule when using Cursor. For other tools, feed it as a system prompt or project instruction file alongside `openapi.yaml`.
+`CLAUDE.md` is loaded automatically as a workspace rule when using Cursor. For other tools, feed it as a system prompt or project instruction file alongside `openapi/openapi.yaml`.
 
 The instructions enforce a strict lifecycle:
 
@@ -45,7 +45,7 @@ READ → PLAN → VERIFY → BUILD → SELF-CHECK
 
 The AI will:
 
-1. **Analyze** every endpoint in `openapi.yaml` and extract schemas
+1. **Analyze** every endpoint in `openapi/openapi.yaml` and extract schemas
 2. **Design** the domain model, feature map, and architecture
 3. **Generate** a typed API client from the spec (using `openapi-typescript`)
 4. **Build** the full React + TypeScript + Vite + TailwindCSS application
@@ -69,7 +69,7 @@ Claude Code automatically reads `CLAUDE.md` and follows the instructions.
 Provide both files as context and use a prompt like:
 
 ```
-Using the attached OpenAPI specification (openapi.yaml) and the instructions
+Using the attached OpenAPI specification (openapi/openapi.yaml) and the instructions
 in CLAUDE.md, build a complete production-ready frontend for the MetaLend
 cross-chain staking platform.
 
