@@ -3,7 +3,7 @@ You are a senior frontend architect and blockchain engineer.
 Your task is to build a COMPLETE production-ready frontend for the **MelaLend cross-chain staking platform** using the OpenAPI specification located in the project folder.
 
 The OpenAPI specification is the **ONLY SOURCE OF TRUTH** for backend functionality.
-**Focus only on `openapi.yaml`** — ignore all other files in this workspace.
+**Focus only on `openapi/openapi.yaml`** — ignore all other files in this workspace.
 
 Never invent endpoints, fields, or behaviors not defined in the specification.
 
@@ -123,7 +123,7 @@ Valid API key is crucial for authentication.
 
 If missing API key is detected or there are 401 api responses, display banner with link where to request API key.  
 
-This link can also be found in `openapi.yaml`.
+This link can also be found in `openapi/openapi.yaml`.
 
 
 ## CONFIGURATION UI RULE — PROJECT SETTINGS VS USER CONFIG
@@ -176,7 +176,7 @@ All selections must originate from the `/v1/pools` endpoint.
 
 ### Collateral exposure (`collateralExposure`) — how the UI must work
 
-When the user configures **`collateralExposure`** (optional list on user config / related flows in `openapi.yaml`):
+When the user configures **`collateralExposure`** (optional list on user config / related flows in `openapi/openapi.yaml`):
 
 1. **Source of allowed choices (catalog)**  
    Do **not** let users type arbitrary token symbols. Build the **choice set** from the **pool catalog**: call **`GET /v1/pools`** and **collect every collateral symbol** that appears on pools (each pool may expose collateral exposure / underlying collateral metadata per the spec). **Union** those symbols across all pools, then **deduplicate** into a **single sorted list of unique strings** (e.g. uppercase for display consistency). That list is what the user **selects from** (multi-select checkboxes, chips, etc.).
@@ -249,7 +249,7 @@ Rules:
 
 Implement a centralized API layer including:
 
-• Api key `requested from link specified in openapi.yaml`
+• Api key `requested from link specified in openapi/openapi.yaml`
 • Base URL from environment variables
 • Typed fetch wrapper
 • Request interceptors
