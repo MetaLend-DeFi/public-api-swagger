@@ -105,6 +105,23 @@ Key capabilities:
 - Project Settings vs User Config distinction
 - Global error boundaries, toast notifications, loading/error states
 
+## Submodule Workflow
+
+The OpenAPI specification is now maintained in a **shared Git submodule** at `https://github.com/MetaLend-DeFi/openapi`.
+
+```bash
+# Clone including submodules
+git clone --recurse-submodules https://github.com/MetaLend-DeFi/openapi
+
+# If already cloned
+git submodule update --init --recursive
+```
+
+When the spec changes:
+
+1. Commit and push the change in the shared OpenAPI repository.
+2. Update the submodule pointer in this repository.
+
 ## Resources
 
 - [Developer Portal (API Keys)](https://developer.metalend.tech/)
