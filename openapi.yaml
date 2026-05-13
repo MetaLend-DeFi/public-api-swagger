@@ -122,6 +122,8 @@ paths:
         ## Notes
         - Smart contract wallets that do not comply with standard signature length are currently not supported
         - For signature-based deposits, ensure timestamps are within valid range
+
+        **Rate limiting**: 1 request per 6 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: createDeposit
       tags:
         - Deposits
@@ -274,6 +276,8 @@ paths:
 
         **Note:** Tracking IDs expire after 5 minutes. If you receive a error code, 
         the tracking ID either doesn't exist or has been purged from the system.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getDepositStatus
       tags:
         - Deposits
@@ -378,6 +382,8 @@ paths:
         `Amount` must be at least 0.1 (stablecoin) of the token to cover on-behalf transaction gas fees and no more than the available balance in the specified pool. This value is specified in raw units (e.g., 6 decimals for USDC). Token decimals are included in the `token` object of `/v1/balances/{walletAddress}` endpoint for reference.
 
         `Signature` must be of length 132 (0x + 130 characters) and signed by the wallet address associated with the **JWT token**.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
         
       operationId: createWithdrawal
       tags:
@@ -501,6 +507,8 @@ paths:
         - `PROCESSING`
         - `SUCCESS`
         - `FAILED`.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       tags:
         - Withdrawals
       security:
@@ -554,6 +562,8 @@ paths:
       description: |
         Returns the current version of the rebalancer contracts used for withdrawal signing.
         This value should be used as the `version` field in the EIP-712 domain when constructing withdrawal signatures.
+
+        **Rate limiting**: 1 request per 6 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getWithdrawalVersion
       tags:
         - Withdrawals
@@ -843,8 +853,8 @@ paths:
         **Recommended**: Use Project Settings as a responsible user config settings. Use this project settings as a default for new users (without signed config). Treat overlapping configurations as a violation.      
 
         **Authentication**: Requires a valid API key. The API key must be associated with a project.
-        
-        **Rate limiting**: 1 request per 3 seconds per client IP (additional requests may receive HTTP 429).
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getProjectSettings
       tags:
         - Project Settings
@@ -895,6 +905,20 @@ paths:
         - `1` = Morpho
         - `2` = Euler
 
+        **Collateral Exposure**: Collateral exposure symbols for the pools in the configuration, must be taken from the pool catalog from GET /v1/pools, unique and not empty. If you want to disable the filter, pass null.
+        example: ["WETH", "cbBTC", "wstETH"]
+
+        Tvl and liquidity multiplier are optional and can be used to filter the pools in the configuration.
+        Example:
+        - requiredTvl: 5000000
+        - requiredLiquidityMultiplier: 10
+        This will filter the pools in the configuration to only include pools that have a TVL of at least $5M and a liquidity multiplier of at least 10.
+        Example:
+        - requiredTvl: 0
+        - requiredLiquidityMultiplier: 0
+        This will disable the filter and include all pools in the configuration.
+        During deposits, pools that do not comply with filters (exposure, liquidity, tvl) are ignored. Active balances are also monitored periodically and if a pool with a deposit no longer complies with the filters, rebalance immediately happens outside to first available pool with highest APY %
+
         **Pool Contracts**: Each pool contract address must be a valid checksummed Ethereum address (EIP-55) corresponding to a pool on the specified protocol. Pool addresses can be obtained from the `/v1/pools` endpoint.
 
         **Signature Requirement**: The `signature` field must be created using the following steps:
@@ -904,17 +928,23 @@ paths:
           - `uint8[]` — `protocolIds` array
           - `address[]` — `poolAddresses` array
           - `uint32[]` — `domainIds` array
-          - `uint256` — `spendingCapRaw` (use `"0"` if not set)
+          - `uint256` — `spendingCapRaw` (use `"0"` if not set, can be set only for USDC, when setting this value, AAVE protocol on LINEA must be included in the configuration with a non-zero spending cap, otherwise the request will be rejected)
 
         2. Compute `keccak256` of the ABI-encoded bytes.
 
         3. Sign the resulting hash using `personal_sign` (i.e. `eth_sign` with the standard Ethereum prefix `\x19Ethereum Signed Message:\n32`). In viem this is `walletClient.signMessage({ account, message: { raw: hash } })`.
 
         The signature must be 132 characters long (0x + 130 hex characters) and must be signed by the wallet address in the `walletAddress` field.
+        
+        **Smart Contract Wallets / ERC-6492**: The optional `chain` parameter provides signature validation context for predeploy smart contract wallets (ERC-6492).
+        Set this when the signer is a smart contract wallet that may not be deployed yet on-chain. If not needed, leave `chain` as `null`.
+        When `chain` is set for contract-wallet validation, all `domainIds` must belong to that same chain (mixed-chain domain IDs are rejected).
 
         **Include Rewards APY**: The optional `includeRewardsApy` boolean flag (default: `true`) determines whether reward APYs should be included in APY calculations during rebalancing decisions.
 
         **Response**: Returns `201 Created` if this is the first configuration for the wallet, or `200 OK` if updating an existing configuration. The response includes the deployed rebalancer contract address and the list of configured tokens.
+
+        **Rate limiting**: 1 request per 6 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: updateConfig
       tags:
         - User Configuration
@@ -940,7 +970,9 @@ paths:
               includeRewardsApy: true
               requiredTvl: 5000000
               requiredLiquidityMultiplier: 10
+              collateralExposure: ["WETH", "cbBTC", "wstETH"]
               spendingCapRaw: "0"
+              chain: "LINEA"
       responses:
         "200":
           description: Configuration updated successfully
@@ -1003,6 +1035,20 @@ paths:
                   $ref: "#/components/examples/UpdateConfigRejectedRefillInProgress"
                 updateConfigRejectedPoolWithBalance:
                   $ref: "#/components/examples/UpdateConfigRejectedPoolWithBalance"
+                invalidCollateralExposureUnknownSymbols:
+                  $ref: "#/components/examples/InvalidCollateralExposureUnknownSymbols"
+                invalidCollateralExposureEmptyList:
+                  $ref: "#/components/examples/InvalidCollateralExposureEmptyList"
+                invalidCollateralExposureMaxSize:
+                  $ref: "#/components/examples/InvalidCollateralExposureMaxSize"
+                invalidCollateralExposureBlankEntry:
+                  $ref: "#/components/examples/InvalidCollateralExposureBlankEntry"
+                invalidCollateralExposureDuplicates:
+                  $ref: "#/components/examples/InvalidCollateralExposureDuplicates"
+                invalidCollateralExposureRequiresAave:
+                  $ref: "#/components/examples/InvalidCollateralExposureRequiresAave"
+                invalidCollateralExposureRequiredTvlNotMet:
+                  $ref: "#/components/examples/InvalidCollateralExposureRequiredTvlNotMet"
         "429":
           $ref: "#/components/responses/RateLimitExceeded"
         "500":
@@ -1029,6 +1075,8 @@ paths:
         When `hasSignedConfig` is false for a token, the configuration data shows what the default state allows, but it hasn't been actively set by the user for that token. This state must be signed by user to confirm the configuration. Each token can have a different `hasSignedConfig` status.
 
         **Note:** Requires a valid API key to query configurations.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getConfig
       tags:
         - User Configuration
@@ -1097,6 +1145,7 @@ paths:
                     totalWithdrawals: "0.00"
                     requiredTvl: "0"
                     requiredLiquidityMultiplier: "0"
+                    collateralExposure: ["cbBTC", "WETH"]
                     spendingCapRaw: null
                     spendingCapFormatted: null
                     hasSignedConfig: false
@@ -1133,6 +1182,8 @@ paths:
         - **Rebalancing Manager Address**: The address of the rebalancing manager contract
 
         This represents the default state of the configuration, which can be used as a reference or starting point for rebalancing operations. Use this to compare against user's existing configuration.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getDefaultConfig
       tags:
         - User Configuration
@@ -1174,7 +1225,7 @@ paths:
       description: |
         Retrieves comprehensive information about supported DeFi protocols, pools, Total Value Locked (TVL), and Annual Percentage Yield (APY) data on supported networks.<br><br>
 
-        The response is a flat list of pools across supported protocols (Aave, Morpho, Euler) and tokens (USDC, MUSD, USDT, RLUSD). Each pool includes protocol metadata, pool address/name, underlying token details, TVL, liquidity, APY breakdowns, signing metadata, and blacklist status.<br><br>
+        The response is a flat list of pools across supported protocols (Aave, Morpho, Euler) and tokens (USDC, MUSD, USDT, RLUSD). Each pool includes protocol metadata, pool address/name, underlying token details, TVL, liquidity, collateral exposure, APY breakdowns, signing metadata, and blacklist status.<br><br>
 
         **APY Information**: The APY data includes native lending rates, reward provider APYs (e.g., MERKLE, BREVIS), and total combined APY. All APY values are formatted to 2 decimal places and represent 7-day average market rates adjusted by fees.<br><br>
 
@@ -1189,6 +1240,8 @@ paths:
         not by `poolAddress`.
 
         This endpoint requires an API key and can be used to discover available investment opportunities before configuring a rebalancer or making deposits.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getPools
       tags:
         - Pools
@@ -1243,6 +1296,8 @@ paths:
         **Summary**: The response includes an aggregate summary with total balance across all queried tokens, total net earnings, queried tokens, and queried chains.<br><br>
 
         **Error Handling**: If blockchain queries fail or the wallet has no rebalancer configuration, appropriate error responses are returned. The endpoint uses an all-or-nothing approach - if any token query fails, the entire request fails with a 500 or 503 status code.
+
+        **Rate limiting**: 1 request per 12 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getRebalancerBalances
       tags:
         - Balances
@@ -1334,6 +1389,8 @@ paths:
           data: claimTransaction.calldata,
           chainId: claimTransaction.chainId,
         })
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getRewards
       tags:
         - Rewards
@@ -1387,6 +1444,8 @@ paths:
       summary: Get transaction costs
       description: |
         Retrieves gas fee estimates and minimum deposit/withdraw amounts per chain for the specified token.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getTransactionCosts
       tags:
         - Transaction Costs
@@ -1427,6 +1486,8 @@ paths:
       summary: Create wallet challenge
       description: |
         Issues a challenge message that must be signed by the wallet owner.
+
+        **Rate limiting**: 1 request per 6 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: createAuthChallenge
       tags:
         - Auth
@@ -1480,6 +1541,8 @@ paths:
       summary: Verify wallet challenge
       description: |
         Verifies the signed challenge and issues a JWT for authenticated requests.
+
+        **Rate limiting**: 1 request per 12 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: verifyAuthChallenge
       tags:
         - Auth
@@ -1542,6 +1605,8 @@ paths:
       summary: Get bridge balances
       description: |
         Retrieves bridge balances for the specified wallet address.
+
+        **Rate limiting**: 1 request per 3 seconds per client IP. Excess requests receive HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers (see `RateLimitExceeded` response).
       operationId: getBridgeBalances
       tags:
         - Balances
@@ -1672,7 +1737,7 @@ components:
           enum: [BASE, POLYGON, ARBITRUM, OPTIMISM, AVALANCHE, LINEA, ETHEREUM]
           nullable: true
           default: null
-          description: When signing with a Smart Contract Wallet, specify the chain kind. Currently only Coinbase Smart Wallet is supported. This provides signature verification context
+          description: When signing with a Smart Contract Wallet, specify the chain kind. This provides signature verification context
           example: "BASE"
 
     VerifyChallengeResponse:
@@ -2036,7 +2101,10 @@ components:
           type: array
           items:
             type: integer
-          description: Domain IDs - must match length and index values must be relevant to protocolIds and poolAddresses
+          description: >
+            Domain IDs - must match length and index values must be relevant to
+            protocolIds and poolAddresses. For smart contract wallet validation
+            (when `chain` is set), all domain IDs must be on that same chain.
           example: [11, 11, 11]
         protocolIds:
           type: array
@@ -2082,6 +2150,28 @@ components:
             *(Optional)* Maximum amount in raw token units (unformatted integer) the rebalancer
             is allowed to move in a single transaction. Pass `"0"` for no cap.
             Example for USDC (6 decimals): `"1000000000"` = $1,000 cap.
+        collateralExposure:
+          type: array
+          nullable: true
+          default: null
+          items:
+            type: string
+          description: >
+            Collateral exposure symbols for the pools in the configuration, must be taken from the pool catalog from GET /v1/pools,
+            unique and not empty. If you want to disable the filter, pass null.
+          example: ["WETH", "cbBTC", "wstETH"]
+        chain:
+          type: string
+          enum: [BASE, POLYGON, ARBITRUM, OPTIMISM, AVALANCHE, LINEA, ETHEREUM]
+          nullable: true
+          default: null
+          description: >
+            Optional signature validation context chain for Smart Contract Wallets and
+            predeploy contract signatures (ERC-6492). Use this when the signer is a
+            smart contract wallet that may not yet be deployed. When provided, every
+            value in `domainIds` must match this chain's domain ID. Leave `null` for
+            EOAs or when no additional chain context is required.
+          example: "BASE"
 
     CreateOrUpdateConfigResponse:
       type: object
@@ -2347,13 +2437,25 @@ components:
         poolLiquidity:
           type: string
           description: Available liquidity for the pool
+        collateralExposure:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+          description: >
+            Collateral exposure for the pool. Keys are Morpho market identifiers,
+            values are the collateral token symbols for each market.
+            Null for non-Morpho pools (Aave, Euler).
+          example:
+            "0x3b3769cfb1649e84374e7f0e0e46cbf9a1a39a62fa6a8b82e9e9edd1b3a3e3f7": "WETH"
+            "0xa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2": "cbBTC"
         poolApy:
           $ref: "#/components/schemas/PoolApyInfo"
         signData:
           $ref: "#/components/schemas/PoolSignData"
         blacklisted:
           type: boolean
-          description: Indicates whether the pool is blacklisted
+          description: Indicates whether the pool has been blacklisted (banned) due to a third party critical security issue. Blacklisted pools are deprecated and retained solely for backwards compatibility. New deposits are never routed to blacklisted pools, and all existing balances are automatically rebalanced out of such pools when possible (balance is large enough to pay on-behalf fee and there is enough liquidity to withdraw).
 
     PoolSignData:
       type: object
@@ -3631,6 +3733,69 @@ components:
         requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
         retryAfterSeconds: null
 
+    InvalidCollateralExposureUnknownSymbols:
+      summary: Unknown collateral symbols (not tracked in vault exposure)
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Unknown collateral symbol(s) not present in tracked vault exposure: FOO, XYZ"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureEmptyList:
+      summary: Empty collateralExposure array (use null to disable filter)
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Collateral exposure list cannot be empty. Use null to disable the filter."
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureMaxSize:
+      summary: collateralExposure list exceeds maximum length
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Collateral exposure list exceeds maximum allowed size of 200 entries."
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureBlankEntry:
+      summary: Blank string in collateralExposure list
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Entry at index 0 cannot be blank."
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureDuplicates:
+      summary: Duplicate symbols in collateralExposure list
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Collateral exposure list contains duplicate entries."
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureRequiresAave:
+      summary: collateralExposure set but no Aave pool in configuration
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Collateral exposure is enabled: at least one Aave pool (protocol 0) is required. Set collateralExposure to null to save a configuration without Aave."
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
+    InvalidCollateralExposureRequiredTvlNotMet:
+      summary: No configured Aave pool meets required minimum TVL
+      value:
+        code: "ILLEGAL_ARGUMENT_ERROR"
+        internalCode: "INVALID_COLLATERAL_EXPOSURE"
+        message: "Invalid collateral exposure: Collateral exposure is enabled: at least one configured Aave pool must meet your required minimum TVL (5000000 USD). None qualify. LINEA: Aave market TVL 1000000 USD is below required minimum TVL 5000000 USD"
+        requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
+        retryAfterSeconds: null
+
     InvalidPoolIdentifier:
       summary: Invalid pool identifier
       value:
@@ -3749,22 +3914,52 @@ components:
                 requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
                 retryAfterSeconds: null
 
-    # TODO: add limits to relevant endpoints
     RateLimitExceeded:
-      description: Rate limit exceeded
+      description: |
+        Too many requests for this endpoint. Limits are enforced per client IP for the public API routes backed by `RebalancerResource` (and related resources using the same filter).
+
+        Response headers (when throttled):
+        - `Retry-After`: seconds to wait before retrying (matches the rate-limit window duration for that endpoint).
+        - `X-RateLimit-Limit`: maximum requests allowed in the window (e.g. `1`).
+        - `X-RateLimit-Remaining`: remaining requests in the window (`0` when throttled).
+        - `X-RateLimit-Reset`: Unix timestamp (seconds) when the limit window resets.
+
+        `internalCode` in the JSON body is `THROTTLE_PER_IP` for IP-scoped limits (other values may apply for different scopes in the backend).
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying this endpoint.
+          schema:
+            type: integer
+            example: 3
+        X-RateLimit-Limit:
+          description: Maximum number of requests allowed in the current window for this endpoint.
+          schema:
+            type: integer
+            example: 1
+        X-RateLimit-Remaining:
+          description: Remaining requests in the current window.
+          schema:
+            type: integer
+            example: 0
+        X-RateLimit-Reset:
+          description: Unix timestamp (seconds) when the current limit window resets.
+          schema:
+            type: integer
+            format: int64
+            example: 1713264123
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ApiError"
           examples:
-            Rate Limit Exceeded:
-              summary: Rate limit exceeded
+            rateLimitExceededPerIp:
+              summary: Rate limit exceeded (per client IP)
               value:
                 code: "RATE_LIMIT_EXCEEDED"
-                internalCode: "RATE_LIMIT_EXCEEDED"
-                message: "Rate limit exceeded. Please try again later"
+                internalCode: "THROTTLE_PER_IP"
+                message: "Rate limit exceeded. Maximum 1 requests per 3 seconds allowed. Please try again later."
                 requestId: "2c2f3dc1-d19a-49cb-b695-37d025e551b3"
-                retryAfterSeconds: 60
+                retryAfterSeconds: 3
 
     InternalError:
       description: Internal server error
